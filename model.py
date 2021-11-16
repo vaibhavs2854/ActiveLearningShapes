@@ -114,7 +114,7 @@ def model_update(model,dataloader,oracle_results,criterion,optimizer,batch_size=
                 removed_indices = [i for i in range(image.shape[0]) if labels[i]==2]
                 dummy = torch.empty((image.shape[0] - len(removed_indices),3,224,224))
                 new_labels = [0]*(images.shape[0] - len(removed_indices))
-                cur_index = 0;
+                cur_index = 0
                 for i in range(image.shape[0]):
                     if i in removed_indices:
                         continue
@@ -134,7 +134,6 @@ def model_update(model,dataloader,oracle_results,criterion,optimizer,batch_size=
                 y = model(dummy)
 
                 loss = criterion(y,new_labels)
-                loss_tracker.append(loss.detach().cpu().item()/batch_size)
                 loss.backward()
                 optimizer.step()
     model.eval()

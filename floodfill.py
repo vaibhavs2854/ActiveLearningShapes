@@ -23,6 +23,8 @@ import matplotlib.gridspec as gridspec
 
 import copy
 
+from unet import find_border,expand_border
+
 """Largest Contiguous Region Helper Methods"""
 def bfs_flood_fill(mask,i,j,val):
     queue = []
@@ -68,3 +70,38 @@ def get_int(mask):
     return np.where(mask>0.2,1,0)
 
 """END"""
+
+#Evaluate retrained UNet with OracleImages/Iterx data, floodfill the resultant masks, and save [image,mask] stack.
+#Iter 0 flag deals with the first case vs subsequent cases
+def convert_directory_to_floodfill(in_dir,iter0=False):
+    #assumes in_dir ends with /. Generates the out directory (with ff) and if doesn't exist makes it
+    """This takes in the output from the UNet Model (WITHOUT floodfill and WITHOUT borders)
+        Uses floodfill to generate largest contiguous region and Generates borders"""
+    out_dir = in_dir[:-1] + "_ff/" if not iter0 else "/usr/xtmp/vs196/mammoproj/Code/ActiveLearning/UNetSegmentations/Iter0_ff/"
+    if not os.path.exists(out_dir):
+        os.makedirs(out_dir)
+    train_images_filepaths = []
+    for root, dirs, files in os.walk(in_dir):
+        for file in files:
+            if file.endswith(".npy"):
+                train_images_filepaths.append(os.path.join(root,file))
+    for file in tqdm(train_images_filepaths):
+        array_and_mask = np.load(file)
+        arr = array_and_mask[0,:,:].copy()
+        mask = largest_contiguous_region(array_and_mask[1,:,:].copy()) #does the floodfill on mask
+        #Makes expanded border as 3rd channel
+        resized_mask =  cv2.resize(mask, dsize=(256, 256), interpolation=cv2.INTER_NEAREST)
+
+        border_mask = find_border(resized_mask.copy())
+        times_expanded = 0
+        for j in range(5):
+            border_mask = expand_border(border_mask)
+        #Saves
+        border_mask = cv2.resize(border_mask,dsize=mask.shape,interpolation=cv2.INTER_NEAREST)
+        ff_array_and_mask_and_border = np.stack([arr,mask,border_mask])
+        save_dir_dir = out_dir + file.split("/")[-2] + "/"
+        if not os.path.exists(save_dir_dir):
+            os.makedirs(save_dir_dir)
+        save_path = out_dir + "/".join(file.split("/")[-2:])
+        np.save(save_path,ff_array_and_mask_and_border)
+    return out_dir

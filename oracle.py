@@ -69,13 +69,35 @@ def display_image(patient_ids,source_path):
 
 #picks uniform scores to return to oracle
 
-def query_oracle(oracle_results,patient_scores,im_dir):
+def query_oracle(oracle_results,patient_scores,im_dir,query_method="uniform",query_number=10):
+    if query_number==0:
+        print("Why are you asking for 0 queries?")
+        return oracle_results
+    if query_number>len(patient_scores):
+        print("Query too big for number of patients")
+        return oracle_results
     oracle_queries = []
-    step = len(patient_scores)//10
-    for i in range(0,len(patient_scores),step):
-        if list(patient_scores.keys())[i] not in list(oracle_results.keys()):
-            oracle_queries.append(list(patient_scores.keys())[i])
-
+    if query_method=="uniform":
+        step = len(patient_scores)//(query_number-1)
+        for i in range(0,len(patient_scores),step):
+            if list(patient_scores.keys())[i] not in list(oracle_results.keys()):
+                oracle_queries.append(list(patient_scores.keys())[i])
+    elif query_method=="random":
+        indices = random.sample(len(patient_scores), query_number)
+        for i in indices:
+            if list(patient_scores.keys())[i] not in list(oracle_results.keys()):
+                oracle_queries.append(list(patient_scores.keys())[i])
+    elif query_method=="best":
+         for i in range(query_number-1,-1,-1):
+             if list(patient_scores.keys())[i] not in list(oracle_results.keys()):
+                oracle_queries.append(list(patient_scores.keys())[i])
+    elif query_method=="worst":
+        for i in range(query_number):
+            if list(patient_scores.keys())[i] not in list(oracle_results.keys()):
+                oracle_queries.append(list(patient_scores.keys())[i])
+    else:
+        print("You entered an unsupported query method.")
+        return oracle_results
     display_image(oracle_queries,im_dir)
     #ensures that the oracle puts in the correct number of annotations
     ensure_correct_input_flag = True
@@ -108,6 +130,31 @@ def calculate_dispersion_metric(patient_scores,oracle_results):
                 if oracle_results[tupled_patient_scores[j][0]]==0: #red
                     metric += 1
     return 1 - metric/(num_ones*num_zeros)
+
+
+def save_oracle_results(oracle_results,im_dir,save_dir):
+    all_save_paths = []
+    if not os.path.exists(save_dir):
+            os.makedirs(save_dir)
+    for patient in oracle_results.keys():
+        #patient is the patient id
+        #oracle_results[patient] is 0/1
+        if(oracle_results[patient]==1):
+            #good segmentation - save into another folder
+            if(patient.startswith("/")):
+                save_path = save_dir+ patient[1:] + ".npy"
+            else:
+                save_path = save_dir + patient + ".npy";
+            load_path = im_dir + patient + ".npy"
+            shape_type = load_path.split("/")[-2]
+            im = np.load(load_path)
+            save_dir_dir = save_dir + shape_type + "/"
+            if not os.path.exists(save_dir_dir):
+                os.makedirs(save_dir_dir)
+            np.save(save_path,im)
+            all_save_paths.append(save_path)
+    print("Done with saving this iteration of oracle results")
+    return all_save_paths
 
 
 

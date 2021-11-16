@@ -23,9 +23,9 @@ import matplotlib.gridspec as gridspec
 
 import copy
 
-from floodfill import largest_contiguous_region
+#from floodfill import largest_contiguous_region
 
-class CBISDDSM_get_data(Dataset):
+class get_data(Dataset):
     def __init__(self,image_filepaths,image_transform):
         super().__init__()
         self.image_filepaths = image_filepaths
@@ -42,7 +42,7 @@ class CBISDDSM_get_data(Dataset):
         arr = copy_arr_mask[0,:,:].copy()
         mask = copy_arr_mask[1,:,:].copy()
         
-        mask = largest_contiguous_region(mask)
+        #mask = largest_contiguous_region(mask)
         
         image = (self.image_transform(arr))
         #image = our_transform(image)
@@ -55,7 +55,7 @@ class CBISDDSM_get_data(Dataset):
         #mask_label = our_transform(mask_label)
         return image,mask_label.long(),patient_id
     
-def CBIS_DDSM_get_DataLoader(train_images_directory,batch_size,num_workers):
+def get_DataLoader(train_images_directory,batch_size,num_workers):
     #find all files inside train_images_directory, assign to train_images_filenames
     train_images_filepaths = []
     for root, dirs, files in os.walk(train_images_directory):
@@ -66,6 +66,6 @@ def CBIS_DDSM_get_DataLoader(train_images_directory,batch_size,num_workers):
     transforms_arr = [transforms.ToTensor(),transforms.Resize((224,224))]
     transform = transforms.Compose(transforms_arr)
     
-    trainset = CBISDDSM_get_data(train_images_filepaths,transform)
+    trainset = get_data(train_images_filepaths,transform)
     trainloader = DataLoader(trainset,batch_size=batch_size,num_workers=num_workers,shuffle=True)
     return trainloader
