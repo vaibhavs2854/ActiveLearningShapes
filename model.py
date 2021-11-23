@@ -35,7 +35,8 @@ def initialize_and_train_model(dataloader,batch_size=32,epochs=15):
     
     criterion = nn.CrossEntropyLoss()
     #criterion = nn.BCEWithLogitsLoss();
-    optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
+    #optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
+    optimizer = torch.optim.SGD(model.parameters(),lr=0.001,momentum=0.9)
     loss_tracker = [] #plot loss
 
     for epoch in range(epochs):

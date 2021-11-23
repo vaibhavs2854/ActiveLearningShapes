@@ -269,6 +269,61 @@ def unet_update_model(model,dataloader,num_epochs=10,has_weights=True,weight_rat
         metric_tracker.append(metric/count)
     return model,loss_tracker,metric_tracker
 
+
+#todo: How to save output from model (torch tensor) as numpy? DONE: .numpy()
+def evaluate_model_on_new_segmentations_and_save(unet_model,segmentation_folder,saved_oracle_filepaths,correct_save_dir,save_dir,iter_num):
+    #Define transform for input into model
+    transforms_arr = [transforms.ToTensor(),transforms.Resize((256,256))]
+    image_transform = transforms.Compose(transforms_arr)
+    
+    #Find all files in segmentation_folder
+    segmentation_filepaths = []
+    for root, dirs, files in os.walk(segmentation_folder):
+        for file in files:
+            if file.endswith(".npy"):
+                segmentation_filepaths.append(os.path.join(root,file))
+    
+    for filepath in segmentation_filepaths:
+        #redo stuff in dataloader - load in stack and apply tensor transform for model input
+        arr_and_mask = np.load(filepath)
+        arr = arr_and_mask[0,:,:].copy()
+        mask = arr_and_mask[1,:,:].copy()
+
+        image = image_transform(arr)
+        unet_seg = model(image).numpy()
+
+        #grab filename and make sure save directories are defined
+        filename = "/".join(filepath.split("/")[-2:])
+        class_subfolder = save_dir + filepath.split("/")[-2] + "/"
+        if not os.path.exists(class_subfolder):
+            os.makedirs(class_subfolder)
+        save_path = class_subfolder + filepath.split("/")[-1]
+
+        #do the same for the labelled correctly by oracle folder
+        class_subfolder = correct_save_dir + filepath.split("/")[-2] + "/"
+        if not os.path.exists(class_subfolder):
+            os.makedirs(class_subfolder)
+        correct_oracle_save_path = class_subfolder + filepath.split("/")[-1]
+
+        #check if in saved_oracle_filepaths
+        #If file labelled correct by oracle, save og segmentation and add new to separate dir
+        if filepath in saved_oracle_filepaths:
+            np.save(save_path,np.stack([arr,mask]))
+            np.save(correct_oracle_save_path,np.stack([arr,unet_seg]))
+        #if normal, save it to save_dir
+        else:
+            np.save(save_path,np.stack([arr,unet_seg]))
+
+
+#Removes all 0's from oracle_results (images that oracle said are incorrect)
+def remove_bad_oracle_results(oracle_results):
+    output = {}
+    for patient in oracle_results.keys():
+        if(oracle_results[patient]):
+            output[patient] = oracle_results[patient]
+    return output
+
+
 #Threshold value changed here
 def get_binary_mask(mask):
     return torch.where(mask > 0.5, 1, 0)
