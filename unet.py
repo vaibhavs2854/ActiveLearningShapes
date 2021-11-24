@@ -37,32 +37,7 @@ def preprocess_mask(mask):
     mask[(mask == 1.0) | (mask == 3.0)] = 1.0
     return mask
 
-class Pet_get_data(Dataset):
-    def __init__(self, images_filenames, images_directory, masks_directory, transform,mask_transform):
-        self.images_filenames = images_filenames
-        self.images_directory = images_directory
-        self.masks_directory = masks_directory
-        self.transform = transform
-        self.mask_transform = mask_transform
-
-    def __len__(self):
-        return len(self.images_filenames)
-
-    def __getitem__(self, idx):
-        image_filename = self.images_filenames[idx]
-        #Get image, convert to color
-        image = cv2.imread(os.path.join(self.images_directory, image_filename))
-        image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-        #get mask, process to get segmentation
-        mask = cv2.imread(
-            os.path.join(self.masks_directory, image_filename.replace(".jpg", ".png")), cv2.IMREAD_UNCHANGED,
-        )
-        #combines the border/subject into one
-        mask = preprocess_mask(mask)
-        #performs transform
-        return self.transform(image),self.mask_transform(mask)
-
-class CBISDDSM_get_data(Dataset):
+class InhouseGetData(Dataset):
     def __init__(self,image_filepaths,image_transform,data_aug=True,has_weights=True):
         super().__init__()
         self.image_filepaths = image_filepaths
@@ -115,6 +90,62 @@ class CBISDDSM_get_data(Dataset):
             return image,mask_label,weights_label
         return image,mask_label
 
+class CBISDDSMGetData(Dataset):
+    def __init__(self,image_filenames,home_dir,image_transform,data_aug=False,has_weights=False):
+        super().__init__()
+        self.image_filenames = image_filenames
+        self.home_dir = home_dir
+        self.image_transform = image_transform
+        self.data_aug = data_aug
+        self.has_weights = has_weights
+
+    def __len__(self):
+        return len(self.image_filenames)
+
+    def __getitem__(self,idx):
+        filename = self.image_filenames[idx]
+        filepath = os.path.join(self.home_dir,filename)
+        #print("Filepath: " + filepath)
+        arr_and_mask = np.load(filepath)
+        copy_arr_mask = arr_and_mask.copy()
+        if self.data_aug:
+            copy_arr_mask = random_flip(copy_arr_mask, 0, True)
+            copy_arr_mask = random_flip(copy_arr_mask, 1, True)
+            copy_arr_mask = random_rotate_90(copy_arr_mask, True)
+            copy_arr_mask = random_rotate_90(copy_arr_mask, True)
+            copy_arr_mask = random_rotate_90(copy_arr_mask, True)
+        arr = copy_arr_mask[0,:,:].copy()
+        mask = copy_arr_mask[1,:,:].copy()
+        if self.has_weights:
+            weights = copy_arr_mask[2,:,:].copy()
+        arr = exposure.equalize_hist(arr) #histogram equalization, remove if u want
+        #arr = np.stack([arr,arr,arr])
+        #mask = np.stack([mask,mask,mask])
+        #no need to preprocess
+        #print("INSIDE")
+        #print(arr.shape)
+        
+        image = self.image_transform(arr)
+        #image = our_transform(image)
+        #print(image.shape)
+        #print("OUTSIDE")
+        mask_label = self.image_transform(mask)
+        #mask_label = our_transform(mask_label)
+        if self.has_weights:
+            weights_label = self.image_transform(weights)
+            #weights_label = our_transform(weights_label)
+        #a transform
+        # print(arr.shape)
+        # print(mask.shape)
+        
+        # transformed = self.a_transform(image=arr, mask=mask)
+        # a_image = transformed["image"]
+        # a_mask = transformed["mask"]
+        if self.has_weights:
+            return image,mask_label,weights_label
+        return image,mask_label
+
+
 #Buffer is 32 default
 def our_transform(arr,buffer=32):
     out = torch.zeros(256,256)
@@ -125,52 +156,31 @@ def our_transform(arr,buffer=32):
 def unet_dataloader(train_images_filepaths,batch_size,num_workers):
     transforms_arr = [transforms.ToTensor(),transforms.Resize((256,256))]
     transform = transforms.Compose(transforms_arr)
-    trainset = CBISDDSM_get_data(train_images_filepaths,transform,data_aug=True,has_weights=True)
+    trainset = InhouseGetData(train_images_filepaths,transform,data_aug=True,has_weights=True)
     trainloader = DataLoader(trainset,batch_size=batch_size,num_workers=num_workers)
     return trainloader
 
 
-def CBIS_DDSM_get_DataLoader(train_images_filenames,test_images_filenames,train_images_directory,test_images_directory,batch_size,num_workers,has_weights=False):
-    print("bench1")
+def CBIS_DDSM_get_DataLoader(batch_size,num_workers,has_weights=True,train_images_filename='unet_trainfiles.txt',test_images_filename='unet_testfiles.txt',train_images_directory="/usr/xtmp/vs196/mammoproj/Data/unet_cbisddsm_border/Train/",test_images_directory="/usr/xtmp/vs196/mammoproj/Data/unet_cbisddsm_border/Test/"):
+    train_images_filenames = []
+    with open(train_images_filename,'r') as train_file:
+        for line in train_file.readlines():
+            train_images_filenames.append(line[2:-1])
+
+    test_images_filenames = []
+    with open(test_images_filename,'r') as test_file:
+        for line in test_file.readlines():
+            test_images_filenames.append(line[2:-1])
+    
     transforms_arr = [transforms.ToTensor(),transforms.Resize((256,256))]
     transform = transforms.Compose(transforms_arr)
-    print("bench2")
-    trainset = CBISDDSM_get_data(train_images_filenames,train_images_directory,transform,data_aug=True,has_weights=has_weights)
-    trainloader = DataLoader(trainset,batch_size=batch_size,num_workers=num_workers)
-    print("bench3")
-    testset = CBISDDSM_get_data(test_images_filenames,test_images_directory,transform,data_aug=False,has_weights=has_weights) #boolean is data aug
-    testloader = DataLoader(testset,batch_size=batch_size,num_workers=num_workers)
-    print("bench4")
-    return trainloader,testloader
 
-#Returns a dataloader object for training
-def Pet_get_DataLoader(train_images_filenames, test_images_filenames, images_directory, masks_directory,batch_size,num_workers):
-    transform1 = [(transforms.ToTensor()),transforms.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),transforms.Resize((256,256))]
-    transform2 = [(transforms.ToTensor()),transforms.Resize((256,256))]
-
-    image_transform = transforms.Compose(transform1)
-    mask_transform = transforms.Compose(transform2)
-    trainset = Pet_get_data(train_images_filenames, images_directory, masks_directory, image_transform,mask_transform)
-    testset = Pet_get_data(test_images_filenames, images_directory, masks_directory, image_transform,mask_transform)
+    trainset = CBISDDSMGetData(train_images_filenames,train_images_directory,transform,data_aug=True,has_weights=has_weights)
     trainloader = DataLoader(trainset,batch_size=batch_size,num_workers=num_workers)
+    
+    testset = CBISDDSMGetData(test_images_filenames,test_images_directory,transform,data_aug=False,has_weights=has_weights) #boolean is data aug
     testloader = DataLoader(testset,batch_size=batch_size,num_workers=num_workers)
     return trainloader,testloader
-
-class modified_UNet(nn.Module):
-    def __init__(self,pretrained_model):
-        super().__init__()
-        self.premodel = pretrained_model
-        self.flayer = nn.ConvTranspose2d(1, 3, kernel_size=1, stride=1)
-    def forward(self,x):
-        upsampled = self.flayer(x)
-        return self.premodel.forward(upsampled)
-
-def create_model(model_flag,num_classes):
-    model = getattr(ternausnet.models, "UNet16")(num_classes=num_classes,pretrained=True)
-    #modified_model = modified_UNet(model)
-    #return model
-    #return UNet2(3,1)
-    return model if model_flag else UNet()
 
 def get_ints(mask):
     return torch.where(mask>0.2,1,0)
@@ -178,7 +188,6 @@ def get_ints(mask):
 #Modify to change the relative weighting of border/other
 def get_weight(mask,weight_ratio=0.5):
     return torch.where(mask>0.2,1.0,weight_ratio)
-
 
 #Ground truth mask and output mask are both floats.
 #Ground truth is 0/1 float, while output is a legit float
@@ -220,7 +229,7 @@ def get_two_channels(output):
 def convert_to_3channel(x):
     return torch.tile(x,(1,3,1,1))
 
-def unet_update_model(model,dataloader,num_epochs=10,has_weights=True,weight_ratio=0.5):    
+def unet_update_model(model,inhouse_dataloader,num_epochs=10,has_weights=True,weight_ratio=0.5):    
     criterion = weightedpixelcros
     optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
     #optimizer = torch.optim.SGD(model.parameters(),lr=0.001,momentum=0.9)
@@ -233,13 +242,78 @@ def unet_update_model(model,dataloader,num_epochs=10,has_weights=True,weight_rat
         tr_loss = 0.0
         count = 0
         metric = 0.0
-        for grouped in tqdm(dataloader):
+        for grouped in tqdm(inhouse_dataloader):
             #push to cuda
             images = grouped[0]
             images = images.float()
             labels = grouped[1]
             if has_weights:
                 weights = get_weight(grouped[2],weight_ratio=weight_ratio)
+                weights = weights.cuda()
+            #print(images.shape)
+            #images = transforms.Normalize(mean=(0.445,), std=(0.269,))(images) #normalize
+            images = convert_to_3channel(images).cuda()
+            #Include bottom line (normalize after convert to 3-channels)
+            images = transforms.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)) (images)
+            #images = convert_to_3channel(images).cuda() if not pet_flag else images.cuda()
+            #print(images.shape)
+            #labels = labels.long()
+            #labels = labels.squeeze(1)
+            labels = labels.cuda()
+            optimizer.zero_grad()
+            #print("IMAGE SHAPE: ")
+            #print(images.shape)
+            y = model(images)
+            #y = y.squeeze(1)
+            #y = y.cuda()
+            if has_weights:
+                loss = criterion(y,labels,weights)
+            else:
+                loss = criterion(y,labels)
+            loss.backward()
+            optimizer.step()
+            tr_loss += loss.detach().cpu().item()
+            count += images.shape[0]
+            metric += intersection_over_union(y,labels)*images.shape[0]
+        loss_tracker.append(tr_loss/(count))
+        metric_tracker.append(metric/count)
+    return model,loss_tracker,metric_tracker
+
+#TODO: Add in test dataloader
+def unet_update_model_multi_dataloader(model,inhouse_dataloader,cbis_dataloader,num_epochs=10,has_weights=True,weight_ratio=0.5):    
+    criterion = weightedpixelcros
+    optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
+    #optimizer = torch.optim.SGD(model.parameters(),lr=0.001,momentum=0.9)
+    loss_tracker = [] #plot loss
+    metric_tracker = []
+
+    model.train()
+
+    bigger_dataloader = inhouse_dataloader
+    smaller_dataloader = cbis_dataloader
+
+    if(len(inhouse_dataloader)<len(cbis_dataloader)):
+        (bigger_dataloader,smaller_dataloader) = (smaller_dataloader,bigger_dataloader)
+    
+    smaller_iter = iter(smaller_dataloader)
+    #training loop
+    for epoch in range(num_epochs):
+        tr_loss = 0.0
+        count = 0
+        metric = 0.0
+        for grouped in tqdm(bigger_dataloader):
+            try:
+                cbis_grouped = next(smaller_iter)
+            except:
+                smaller_iter = iter(smaller_dataloader)
+                cbis_grouped = next(smaller_iter)
+            # TODO: Print batch size of cbis dataloaded and regular dataloader, but only on firstepoch
+            #push to cuda
+            images = torch.cat((grouped[0],cbis_grouped[0]))
+            images = images.float()
+            labels = torch.cat((grouped[1],cbis_grouped[1]))
+            if has_weights:
+                weights = get_weight(torch.cat((grouped[2],cbis_grouped[2])),weight_ratio=weight_ratio)
                 weights = weights.cuda()
             #print(images.shape)
             #images = transforms.Normalize(mean=(0.445,), std=(0.269,))(images) #normalize
@@ -342,176 +416,7 @@ def remove_bad_oracle_results(oracle_results):
 def get_binary_mask(mask):
     return torch.where(mask > 0.2, 1, 0)
 
-def get_visualizations(model,loader,pet_flag=False,binary_flag=False,og_unet_flag=False,has_weights=False):
-    images_arr = []
-    with torch.no_grad():
-        i = 0
-        for grouped in tqdm(loader):
-            images = grouped[0]
-            labels = grouped[1]
-            images = images.float()
-            images = images.cuda() if (pet_flag or og_unet_flag) else convert_to_3channel(images).cuda()
-            #images = convert_to_3channel(images).cuda() if not pet_flag else images.cuda()
-            y = model(images)
-            for i in range(images.shape[0]):
-                one_image = images[i][0,:,:] if not pet_flag else images[i]
-                one_label = labels[i].squeeze(0)
-                if has_weights:
-                    one_predicted_mask = F.softmax(y[i],dim=0)
-                    images_arr.append(get_visualized_image(one_image,one_label,one_predicted_mask[1,:,:],binary_flag=binary_flag))
-                else:
-                    one_predicted_mask = y[i].squeeze(0)
-                    images_arr.append(get_visualized_image(one_image,one_label,one_predicted_mask,binary_flag=binary_flag))
-            break
-    return images_arr
         
-def get_visualized_image(torch_image,torch_mask,torch_pred_mask,binary_flag=False):
-    image = torch_image.cpu().numpy()
-    mask = torch_mask.cpu().numpy()
-    binary_pred_mask = get_binary_mask(torch_pred_mask.cpu()).numpy()
-    pred_mask = torch_pred_mask.cpu().numpy()
-    # print("MAX")
-    # print(np.max(image))
-    # print(np.max(mask))
-    # print(np.max(pred_mask))
-    # print("MIN")
-    # print(np.min(image))
-    # print(np.min(mask))
-    # print(np.min(pred_mask))
-
-    # print(image.shape)
-    # print(mask.shape)
-    # print(pred_mask.shape)
-    if len(image.shape)==2:
-        stacked_image = np.stack([image,image,image])
-        #print("ENTERED ENTERED ENTERED")
-    else:
-        stacked_image = image
-        #print("NOT ENTERED NOT ENTERED")
-    #print(stacked_image.shape)
-    original_img = np.transpose(stacked_image, [1,2,0])
-
-    rescaled_mask = mask - np.amin(mask)
-    rescaled_mask = rescaled_mask / np.amax(rescaled_mask)
-    # print(rescaled_mask.shape)
-    # print(np.min(rescaled_mask))
-    # print(np.max(rescaled_mask))
-    testing = np.uint8(255*rescaled_mask)
-    # print(np.min(rescaled_mask))
-    # print(np.max(rescaled_mask))
-    heatmap = cv2.applyColorMap(np.uint8(255*rescaled_mask), cv2.COLORMAP_JET)
-    heatmap = np.float32(heatmap) / 255
-    heatmap = heatmap[...,::-1]
-    overlayed_img_1 = 0.1 * original_img + 0.5 * heatmap
-
-    rescaled_pred_mask= pred_mask - np.amin(pred_mask)
-    rescaled_pred_mask = rescaled_pred_mask / np.amax(rescaled_pred_mask)
-    heatmap1 = cv2.applyColorMap(np.uint8(255*rescaled_pred_mask), cv2.COLORMAP_JET)
-    heatmap1 = np.float32(heatmap1) / 255
-    heatmap1 = heatmap1[...,::-1]
-    overlayed_img_2 = 0.1 * original_img + 0.5 * heatmap1
-
-    rescaled_binary_pred_mask= binary_pred_mask - np.amin(binary_pred_mask)
-    rescaled_binary_pred_mask = rescaled_binary_pred_mask / np.amax(rescaled_binary_pred_mask)
-    heatmap2 = cv2.applyColorMap(np.uint8(255*rescaled_binary_pred_mask), cv2.COLORMAP_JET)
-    heatmap2 = np.float32(heatmap2) / 255
-    heatmap2 = heatmap2[...,::-1]
-    overlayed_img_3 = 0.1 * original_img + 0.5 * heatmap2
-
-    #original: 0.5,0.3
-    if binary_flag:
-        return original_img,overlayed_img_1,overlayed_img_2,overlayed_img_3
-    else:
-        return original_img,overlayed_img_1,overlayed_img_2
-
-def get_collage(model,loader,pet_flag=False,binary_flag=False,og_unet_flag=False,has_weights=False):
-    images = get_visualizations(model,loader,pet_flag=pet_flag,binary_flag=binary_flag,og_unet_flag=og_unet_flag,has_weights=has_weights)
-    num_cols = 4 if binary_flag else 3
-    f, axarr = plt.subplots(10,num_cols)
-    for i,image in enumerate(images):
-        axarr[i,0].imshow(image[0])
-        axarr[i,1].imshow(image[1])
-        axarr[i,2].imshow(image[2])
-        if binary_flag:
-            axarr[i,3].imshow(image[3])
-            # if i==8:
-            #     print("DEBUGGING MAX VALUE FOR THRESHOLD")
-            #     print(np.max(image[3]))
-            #     print(np.min(image[3]))
-            #     imsave("/usr/xtmp/vs196/mammoproj/Data/unet_viz/model_preds_viz/ternausnet_1/thresholdtesting.png",image[3])
-        if(i==9):
-            break
-    plt.savefig("/usr/xtmp/vs196/mammoproj/Code/UNet/Pretrained_Loss/pretrained_30epoch_811_1_viz.png")
-    plt.clf()
-
-    #big arr dimensions
-    c_row = images[0][0].shape[0]
-    c_col = images[0][0].shape[1]
-    collage = np.zeros((c_row*10,c_col*num_cols,3))
-    #print('hi')
-    for i,image in enumerate(images):
-        # print(image[0].shape)
-        # print(image[1].shape)
-        # print(image[2].shape)
-        # print(collage[i*c_row:(i+1)*c_row,0*c_col:1*c_col].shape)
-        collage[i*c_row:(i+1)*c_row,0*c_col:1*c_col,:] = image[0]
-        collage[i*c_row:(i+1)*c_row,1*c_col:2*c_col,:] = image[1]
-        collage[i*c_row:(i+1)*c_row,2*c_col:3*c_col,:] = image[2]
-        if binary_flag:
-            collage[i*c_row:(i+1)*c_row,3*c_col:4*c_col,:] = image[3]
-        if i==9:
-            break
-    #print(np.max(collage))
-    #print(np.min(collage))
-    plt.figure(figsize = (num_cols,10))
-    plt.imshow(collage)
-    plt.savefig("/usr/xtmp/vs196/mammoproj/Code/UNet/Pretrained_Loss/pretrained_30epoch_811_1_binary_viz_old_testing.png")
-    plt.clf()
-
-def save_info(model,loss_tracker,test_loss_tracker,epoch,pet_flag=False,og_unet_flag=False,has_weights=False,metric=None,save_path=None):
-    #Pets is pet datset, Old/Ternaus are CBIS-DDSM. Old is my UNET, Ternaus is the TernausNet. Ternaus takes in 3-channel, Old takes in 1
-    pet = "Pets/"
-    old = "Old/"
-    normal = "Ternaus/"
-    weight = "Weight/"
-    day = "0811"
-    run_num = 1
-    #CBIS run_num is 1
-    #Pet run_num is 1
-    run_type = pet if pet_flag else (old if og_unet_flag else (weight if has_weights else normal))
-    #model_benchmarks_dir = "/usr/xtmp/vs196/mammoproj/SavedModels/UNet/" + run_type + "finalmodel_" + day + "_" + str(run_num) + "/"
-    model_benchmarks_dir = save_path + "Model/"
-    if not os.path.exists(model_benchmarks_dir):
-        os.makedirs(model_benchmarks_dir)
-    if epoch == -1:
-        torch.save(model,model_benchmarks_dir + "unetmodel_" + "FINAL.pth")
-    else:
-        torch.save(model,model_benchmarks_dir + "unetmodel_" + str(epoch) + ".pth")
-    #torch.save(model,"/usr/xtmp/vs196/mammoproj/SavedModels/UNet/" + run_type + "finalmodel_" + day + "_" + str(run_num) + ".pth")
-
-    fig = plt.plot(loss_tracker)
-    fig2 = plt.plot(test_loss_tracker)
-    #loss_benchmarks_dir = "/usr/xtmp/vs196/mammoproj/Code/UNet/Pretrained_Loss/" + run_type + "pretrained_tnt_loss_" + day + "_" + str(run_num) + "/"
-    loss_benchmarks_dir = save_path + "Losses/"
-    if not os.path.exists(loss_benchmarks_dir):
-        os.makedirs(loss_benchmarks_dir)
-    if epoch==-1:
-        plt.savefig(loss_benchmarks_dir + "loss_FINAL.png")
-    else:
-        plt.savefig(loss_benchmarks_dir + "loss_" + str(epoch) + ".png")
-    plt.clf()
-
-    if has_weights:
-        fig = plt.plot(metric)
-        #metric_benchmarks_dir = "/usr/xtmp/vs196/mammoproj/Code/UNet/Pretrained_Metric/" + run_type + "pretrained_metric_" + day + "_" + str(run_num) + "/"
-        metric_benchmarks_dir = save_path + "IOU/"
-        if not os.path.exists(metric_benchmarks_dir):
-            os.makedirs(metric_benchmarks_dir)
-        if epoch==-1:
-            plt.savefig(metric_benchmarks_dir + "IOU_FINAL.png")
-        else:
-            plt.savefig(metric_benchmarks_dir + "IOU_" + str(epoch) + ".png")
-        plt.clf()
 
 
 # Ref: https://stackoverflow.com/a/42579291/7521428
@@ -586,23 +491,6 @@ def populate_expanded_borders(train_filenames,test_filenames,train_dir,test_dir,
 
     return train_save_dirs, test_save_dirs
     #Done with test
-
-def hyperparameter_run(cbis_train_filenames,cbis_test_filenames,has_weights=True):
-    with open("/usr/xtmp/vs196/mammoproj/Data/train_save_dirs.pkl","rb") as f:
-        train_dict = pickle.load(f)
-    with open("/usr/xtmp/vs196/mammoproj/Data/test_save_dirs.pkl","rb") as f:
-        test_dict = pickle.load(f)
-    for border_size in [0,1,5,10]:
-        train_dir = train_dict[border_size]
-        test_dir = test_dict[border_size]
-        cbis_trainloader,cbis_testloader = CBIS_DDSM_get_DataLoader(cbis_train_filenames,cbis_test_filenames,train_dir,test_dir,16,2,has_weights=has_weights)
-        for weight_ratio in [0.05, 0.1, 0.2, 0.5]:
-            save_path =  f"/usr/xtmp/vs196/mammoproj/SavedModels/HyperparameterUNet_nobuffer/unet_{border_size}_{weight_ratio}/"
-            if not os.path.exists(save_path):
-                os.makedirs(save_path)
-            model,loss_tracker,test_loss_tracker,test_metric_tracker = run_model(cbis_trainloader,cbis_testloader,num_epochs=20,has_weights=has_weights,weight_ratio=weight_ratio,save_path=save_path)
-            save_info(model,loss_tracker,test_loss_tracker,-1,has_weights=has_weights,metric=test_metric_tracker,save_path = save_path)
-            print("Finished saved to: " + save_path)
 
 
 def random_flip(input, axis, with_fa=False):
@@ -806,7 +694,7 @@ if __name__ == "__main__":
     # image_transform = transforms.Compose(image_transforms)
     # mask_transforms = [transforms.ToTensor(),transforms.Resize((256,256))]
     # mask_transform = transforms.Compose(mask_transforms)
-    # for i,(images,labels) in enumerate(CBISDDSM_get_data(cbis_train_filenames,train_dir,image_transform,mask_transform,a_transform)):
+    # for i,(images,labels) in enumerate(CBISDDSMGetData(cbis_train_filenames,train_dir,image_transform,mask_transform,a_transform)):
     #     print(i)
     #     try:
     #         print(images.shape)
