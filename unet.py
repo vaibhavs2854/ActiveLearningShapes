@@ -223,6 +223,7 @@ def convert_to_3channel(x):
 def unet_update_model(model,dataloader,num_epochs=10,has_weights=True,weight_ratio=0.5):    
     criterion = weightedpixelcros
     optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
+    #optimizer = torch.optim.SGD(model.parameters(),lr=0.001,momentum=0.9)
     loss_tracker = [] #plot loss
     metric_tracker = []
 
@@ -232,7 +233,7 @@ def unet_update_model(model,dataloader,num_epochs=10,has_weights=True,weight_rat
         tr_loss = 0.0
         count = 0
         metric = 0.0
-        for grouped in tqdm(train_loader):
+        for grouped in tqdm(dataloader):
             #push to cuda
             images = grouped[0]
             images = images.float()
@@ -242,7 +243,7 @@ def unet_update_model(model,dataloader,num_epochs=10,has_weights=True,weight_rat
                 weights = weights.cuda()
             #print(images.shape)
             #images = transforms.Normalize(mean=(0.445,), std=(0.269,))(images) #normalize
-            images = images.cuda() if (pet_flag or og_unet_flag) else convert_to_3channel(images).cuda()
+            images = convert_to_3channel(images).cuda()
             #Include bottom line (normalize after convert to 3-channels)
             images = transforms.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)) (images)
             #images = convert_to_3channel(images).cuda() if not pet_flag else images.cuda()
@@ -271,7 +272,7 @@ def unet_update_model(model,dataloader,num_epochs=10,has_weights=True,weight_rat
 
 
 #todo: How to save output from model (torch tensor) as numpy? DONE: .numpy()
-def evaluate_model_on_new_segmentations_and_save(unet_model,segmentation_folder,saved_oracle_filepaths,correct_save_dir,save_dir,iter_num):
+def evaluate_model_on_new_segmentations_and_save(model,segmentation_folder,saved_oracle_filepaths,correct_save_dir,save_dir,iter_num):
     #Define transform for input into model
     transforms_arr = [transforms.ToTensor(),transforms.Resize((256,256))]
     image_transform = transforms.Compose(transforms_arr)
@@ -282,18 +283,29 @@ def evaluate_model_on_new_segmentations_and_save(unet_model,segmentation_folder,
         for file in files:
             if file.endswith(".npy"):
                 segmentation_filepaths.append(os.path.join(root,file))
-    
-    for filepath in segmentation_filepaths:
+    patient_ids = []
+    for i in saved_oracle_filepaths:
+        patient_ids.append(i.split("/")[-1])
+    for filepath in tqdm(segmentation_filepaths):
         #redo stuff in dataloader - load in stack and apply tensor transform for model input
         arr_and_mask = np.load(filepath)
         arr = arr_and_mask[0,:,:].copy()
         mask = arr_and_mask[1,:,:].copy()
 
         image = image_transform(arr)
-        unet_seg = model(image).numpy()
+        
+        
+        image = image.float()
+        image = convert_to_3channel(image).cuda()
+        image = transforms.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)) (image)
+
+
+        unet_seg = model(image)
+        unet_seg = F.softmax(unet_seg[0],dim=0)
+        unet_seg = get_binary_mask(unet_seg[1,:,:]).detach().cpu().numpy()
 
         #grab filename and make sure save directories are defined
-        filename = "/".join(filepath.split("/")[-2:])
+        #filename = "/".join(filepath.split("/")[-2:])
         class_subfolder = save_dir + filepath.split("/")[-2] + "/"
         if not os.path.exists(class_subfolder):
             os.makedirs(class_subfolder)
@@ -307,26 +319,28 @@ def evaluate_model_on_new_segmentations_and_save(unet_model,segmentation_folder,
 
         #check if in saved_oracle_filepaths
         #If file labelled correct by oracle, save og segmentation and add new to separate dir
-        if filepath in saved_oracle_filepaths:
+        if filepath.split("/")[-1] in patient_ids:
             np.save(save_path,np.stack([arr,mask]))
             np.save(correct_oracle_save_path,np.stack([arr,unet_seg]))
         #if normal, save it to save_dir
         else:
+            # print("DEBUGGING")
+            # print(unet_seg.shape)
+            # print(arr.shape)
             np.save(save_path,np.stack([arr,unet_seg]))
-
 
 #Removes all 0's from oracle_results (images that oracle said are incorrect)
 def remove_bad_oracle_results(oracle_results):
     output = {}
     for patient in oracle_results.keys():
-        if(oracle_results[patient]):
+        if oracle_results[patient]==1:
             output[patient] = oracle_results[patient]
     return output
 
 
 #Threshold value changed here
 def get_binary_mask(mask):
-    return torch.where(mask > 0.5, 1, 0)
+    return torch.where(mask > 0.2, 1, 0)
 
 def get_visualizations(model,loader,pet_flag=False,binary_flag=False,og_unet_flag=False,has_weights=False):
     images_arr = []
@@ -590,6 +604,66 @@ def hyperparameter_run(cbis_train_filenames,cbis_test_filenames,has_weights=True
             save_info(model,loss_tracker,test_loss_tracker,-1,has_weights=has_weights,metric=test_metric_tracker,save_path = save_path)
             print("Finished saved to: " + save_path)
 
+
+def random_flip(input, axis, with_fa=False):
+    ran = random.random()
+    if ran > 0.5:
+        if with_fa:
+            axis += 1
+        return np.flip(input, axis=axis)
+    else:
+        return input
+
+
+def random_crop(input, with_fa=False):
+    
+    ran = random.random()
+    if ran > 0.2:
+        # find a random place to be the left upper corner of the crop
+        if with_fa:
+            rx = int(random.random() * input.shape[1] // 10)
+            ry = int(random.random() * input.shape[2] // 10)
+            return input[:, rx: rx + int(input.shape[1] * 9 // 10), ry: ry + int(input.shape[2] * 9 // 10)]
+        else:
+            rx = int(random.random() * input.shape[0] // 10)
+            ry = int(random.random() * input.shape[1] // 10)
+            return input[rx: rx + int(input.shape[0] * 9 // 10), ry: ry + int(input.shape[1] * 9 // 10)]
+    else:
+        return input
+
+
+def random_rotate_90(input, with_fa=False):
+    ran = random.random()
+    if ran > 0.5:
+        if with_fa:
+            return np.rot90(input, axes=(1,2))
+        return np.rot90(input)
+    else:
+        return input
+
+
+def random_rotation(x, chance, with_fa=False):
+    ran = random.random()
+    if with_fa:
+        img = Image.fromarray(x[0])
+        mask = Image.fromarray(x[1])
+        if ran > 1 - chance:
+            # create black edges
+            angle = np.random.randint(0, 90)
+            img = img.rotate(angle=angle, expand=1)
+            mask = mask.rotate(angle=angle, expand=1, fillcolor=1)
+            return np.stack([np.asarray(img), np.asarray(mask)])
+        else:
+            return np.stack([np.asarray(img), np.asarray(mask)])
+    img = Image.fromarray(x)
+    if ran > 1 - chance:
+        # create black edges
+        angle = np.random.randint(0, 90)
+        img = img.rotate(angle=angle, expand=1)
+        return np.asarray(img)
+    else:
+        return np.asarray(img)
+
 if __name__ == "__main__":
     # dataset_directory = 'pet_dataset'
     # root_directory = os.path.join(dataset_directory)
@@ -763,4 +837,6 @@ if __name__ == "__main__":
     # print(arr_mask_border.shape)
     # plt.imsave("/usr/xtmp/vs196/mammoproj/Data/border_viz.png",np.transpose(arr_mask_border,[1,2,0]))
     #plt.imsave("/usr/xtmp/vs196/mammoproj/Data/border_viz.png",arr)
+
+
 

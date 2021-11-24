@@ -43,7 +43,7 @@ def initialize_and_train_model(dataloader,batch_size=32,epochs=15):
         model.train()
         tr_loss = 0.0
         for image,mask,_ in tqdm(dataloader):
-            feed_in_data = torch.empty((image.shape[0],3,224,224))
+            feed_in_data = torch.empty((image.shape[0],3,256,256))
             labels = [0]*image.shape[0] 
             for i in range(image.shape[0]):
                 #print(batch_size/2)
@@ -75,7 +75,7 @@ def get_patient_scores(model,dataloader):
     patient_scores = {}
     model.eval()
     for image,mask,patient_id in tqdm(dataloader):
-        feed_in_data = torch.empty((image.shape[0],3,224,224))
+        feed_in_data = torch.empty((image.shape[0],3,256,256))
         for i in range(image.shape[0]):
             feed_in_data[i] = torch.stack([image[i],image[i],mask[i]]).squeeze()
         images = transforms.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)) (feed_in_data)
@@ -99,7 +99,7 @@ def model_update(model,dataloader,oracle_results,criterion,optimizer,batch_size=
     for epoch in range(num_epochs):
         #make another dataloader w/ oracle results.
         for image,mask,patient_id in tqdm(dataloader):
-                feed_in_data = torch.empty((image.shape[0],3,224,224))
+                feed_in_data = torch.empty((image.shape[0],3,256,256))
                 labels = [0]*image.shape[0] 
                 for i in range(image.shape[0]):
                     #print(batch_size/2)
@@ -113,7 +113,7 @@ def model_update(model,dataloader,oracle_results,criterion,optimizer,batch_size=
                 images = transforms.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)) (feed_in_data)
                 #Remove all indices that aren't an oracle
                 removed_indices = [i for i in range(image.shape[0]) if labels[i]==2]
-                dummy = torch.empty((image.shape[0] - len(removed_indices),3,224,224))
+                dummy = torch.empty((image.shape[0] - len(removed_indices),3,256,256))
                 new_labels = [0]*(images.shape[0] - len(removed_indices))
                 cur_index = 0
                 for i in range(image.shape[0]):

@@ -63,7 +63,7 @@ def get_DataLoader(train_images_directory,batch_size,num_workers):
             if file.endswith(".npy"):
                 train_images_filepaths.append(os.path.join(root,file))
                 
-    transforms_arr = [transforms.ToTensor(),transforms.Resize((224,224))]
+    transforms_arr = [transforms.ToTensor(),transforms.Resize((256,256))]
     transform = transforms.Compose(transforms_arr)
     
     trainset = get_data(train_images_filepaths,transform)

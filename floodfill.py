@@ -97,8 +97,9 @@ def convert_directory_to_floodfill(in_dir,iter0=False):
         for j in range(5):
             border_mask = expand_border(border_mask)
         #Saves
-        border_mask = cv2.resize(border_mask,dsize=mask.shape,interpolation=cv2.INTER_NEAREST)
-        ff_array_and_mask_and_border = np.stack([arr,mask,border_mask])
+        #border_mask = cv2.resize(border_mask,dsize=mask.shape,interpolation=cv2.INTER_NEAREST)
+        arr = cv2.resize(arr,dsize=(256,256),interpolation=cv2.INTER_CUBIC)
+        ff_array_and_mask_and_border = np.stack([arr,resized_mask,border_mask])
         save_dir_dir = out_dir + file.split("/")[-2] + "/"
         if not os.path.exists(save_dir_dir):
             os.makedirs(save_dir_dir)
