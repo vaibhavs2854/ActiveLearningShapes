@@ -95,6 +95,23 @@ def query_oracle(oracle_results,patient_scores,im_dir,query_method="uniform",que
         for i in range(query_number):
             if list(patient_scores.keys())[i] not in list(oracle_results.keys()):
                 oracle_queries.append(list(patient_scores.keys())[i])
+    elif 'middle' in query_method:
+        #find the number of elements closest to 0.5
+        split_val = float(query_method.split('=')[-1])
+        middle_index = int(len(patient_scores.keys())/(1/split_val))
+        left_bound = 0 if middle_index - int(query_number/2) < 0 else middle_index - int(query_number/2)
+        indices = list(range(middle_index,middle_index+int(query_number/2))) + range(left_bound,middle_index)
+        for i in indices:
+            if list(patient_scores.keys())[i] not in list(oracle_results.keys()):
+                oracle_queries.append(list(patient_scores.keys())[i])
+        print("Debugging for middle index: "  + str(middle_index) + " " + str(patient_scores[middle_index]))
+    elif "percentile" in query_method:
+        percentile = float(query_method.split('=')[-1])
+        near_index = int(len(patient_scores.keys()) * percentile)
+        indices = list(range(near_index - int(query_number/2), near_index)) + list(range(near_index, near_index + int(query_number/2)))
+        for i in indices:
+            if list(patient_scores.keys())[i] not in list(oracle_results.keys()):
+                oracle_queries.append(list(patient_scores.keys())[i])
     else:
         print("You entered an unsupported query method.")
         return oracle_results
