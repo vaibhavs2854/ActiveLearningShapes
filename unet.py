@@ -345,6 +345,32 @@ def unet_update_model_multi_dataloader(model,inhouse_dataloader,cbis_dataloader,
     return model,loss_tracker,metric_tracker
 
 
+def get_binary_mask_threshold(mask,threshold):
+    return np.where(mask > threshold, 1, 0)
+
+
+#Applies the threshold to each mask saved from the oracle. Resaves [arr,thresholded_mask] stack into save_dir using same conventions (.../Shape/name.npy)
+def threshold_and_save_images(saved_oracle_filepaths, oracle_results_thresholds, save_dir):
+    for filepath in tqdm(saved_oracle_filepaths):
+        if ("/".join(filepath.split("/")[-2:]))[:-4] not in oracle_results_thresholds:
+            threshold = 0.2
+        else:
+            threshold = oracle_results_thresholds[("/".join(filepath.split("/")[-2:]))[:-4]]
+        arr_and_mask = np.load(filepath)
+        copy_arr_mask = arr_and_mask.copy()
+
+        arr = copy_arr_mask[0,:,:].copy()
+        mask = copy_arr_mask[1,:,:].copy()
+        #apply threshold to mask
+        mask = get_binary_mask_threshold(mask, threshold)
+        to_save = np.stack([arr, mask])
+        
+        save_save_dir = save_dir + "/".join(filepath.split("/")[-2:])
+        if not os.path.exists(save_dir + filepath.split("/")[-2]):
+            os.makedirs(save_dir + filepath.split("/")[-2])
+        np.save(save_save_dir, to_save)
+
+
 #todo: How to save output from model (torch tensor) as numpy? DONE: .numpy()
 def evaluate_model_on_new_segmentations_and_save(model,segmentation_folder,saved_oracle_filepaths,correct_save_dir,save_dir,iter_num):
     #Define transform for input into model
