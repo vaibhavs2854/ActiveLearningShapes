@@ -388,9 +388,9 @@ def evaluate_model_on_new_segmentations_and_save(model,segmentation_folder,saved
         patient_ids.append(i.split("/")[-1])
     for filepath in tqdm(segmentation_filepaths):
         #redo stuff in dataloader - load in stack and apply tensor transform for model input
-        arr_and_mask = np.load(filepath)
-        arr = arr_and_mask[0,:,:].copy()
-        mask = arr_and_mask[1,:,:].copy()
+        arr_and_unbin_output = np.load(filepath)
+        arr = arr_and_unbin_output[0,:,:].copy()
+        unbin_output = arr_and_unbin_output[1,:,:].copy()
 
         image = image_transform(arr)
         
@@ -401,8 +401,9 @@ def evaluate_model_on_new_segmentations_and_save(model,segmentation_folder,saved
 
 
         unet_seg = model(image)
-        unet_seg = F.softmax(unet_seg[0],dim=0)
-        unet_seg = get_binary_mask(unet_seg[1,:,:]).detach().cpu().numpy()
+        unbinarized_unet_seg = F.softmax(unet_seg[0],dim=0)
+        #unet_seg here is unbinarized.
+        unet_seg = get_binary_mask(unbinarized_unet_seg[1,:,:]).detach().cpu().numpy()
 
         #grab filename and make sure save directories are defined
         #filename = "/".join(filepath.split("/")[-2:])
@@ -420,8 +421,8 @@ def evaluate_model_on_new_segmentations_and_save(model,segmentation_folder,saved
         #check if in saved_oracle_filepaths
         #If file labelled correct by oracle, save og segmentation and add new to separate dir
         if filepath.split("/")[-1] in patient_ids:
-            np.save(save_path,np.stack([arr,mask]))
-            np.save(correct_oracle_save_path,np.stack([arr,unet_seg]))
+            np.save(save_path,np.stack([arr,unbin_output]))
+            np.save(correct_oracle_save_path,np.stack([arr,unbinarized_unet_seg]))
         #if normal, save it to save_dir
         else:
             # print("DEBUGGING")

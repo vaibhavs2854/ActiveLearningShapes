@@ -77,7 +77,7 @@ def display_image(patient_ids_thresholds,source_path):
 
 
 #picks uniform scores to return to oracle
-
+#im_dir images are two channels: [data,continuous unet output]
 def query_oracle(oracle_results,oracle_results_thresholds,patient_scores,im_dir,query_method="uniform",query_number=10,threshold=0.2):
     if query_number==0:
         print("Why are you asking for 0 queries?")
