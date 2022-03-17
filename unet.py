@@ -401,9 +401,9 @@ def evaluate_model_on_new_segmentations_and_save(model,segmentation_folder,saved
 
 
         unet_seg = model(image)
-        unbinarized_unet_seg = F.softmax(unet_seg[0],dim=0)
+        unbinarized_unet_seg = F.softmax(unet_seg[0],dim=0)[1,:,:]
         #unet_seg here is unbinarized.
-        unet_seg = get_binary_mask(unbinarized_unet_seg[1,:,:]).detach().cpu().numpy()
+        unet_seg = get_binary_mask(unbinarized_unet_seg).detach().cpu().numpy()
 
         #grab filename and make sure save directories are defined
         #filename = "/".join(filepath.split("/")[-2:])
