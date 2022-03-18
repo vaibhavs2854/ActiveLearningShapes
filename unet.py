@@ -392,10 +392,12 @@ def evaluate_model_on_new_segmentations_and_save(model,segmentation_folder,saved
         arr = arr_and_unbin_output[0,:,:].copy()
         unbin_output = arr_and_unbin_output[1,:,:].copy()
 
+        unbin_output = image_transform(unbin_output)[0,:,:]
         image = image_transform(arr)
         
         
         image = image.float()
+        detach_image = image.detach().cpu().numpy()[0,:,:]
         image = convert_to_3channel(image).cuda()
         image = transforms.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)) (image)
 
@@ -403,8 +405,8 @@ def evaluate_model_on_new_segmentations_and_save(model,segmentation_folder,saved
         unet_seg = model(image)
         unbinarized_unet_seg = F.softmax(unet_seg[0],dim=0)[1,:,:]
         #unet_seg here is unbinarized.
-        unet_seg = get_binary_mask(unbinarized_unet_seg).detach().cpu().numpy()
-
+        unet_seg = get_binary_mask(unbinarized_unet_seg)
+        unbinarized_unet_seg = unbinarized_unet_seg.detach().cpu().numpy()
         #grab filename and make sure save directories are defined
         #filename = "/".join(filepath.split("/")[-2:])
         class_subfolder = save_dir + filepath.split("/")[-2] + "/"
@@ -420,15 +422,16 @@ def evaluate_model_on_new_segmentations_and_save(model,segmentation_folder,saved
 
         #check if in saved_oracle_filepaths
         #If file labelled correct by oracle, save og segmentation and add new to separate dir
+        print(f"Debugging. Data shape is: {detach_image.shape}, and unbinarized shape is: {unbinarized_unet_seg.shape}, and unbin output shape is {unbin_output.shape}")
         if filepath.split("/")[-1] in patient_ids:
-            np.save(save_path,np.stack([arr,unbin_output]))
-            np.save(correct_oracle_save_path,np.stack([arr,unbinarized_unet_seg]))
+            np.save(save_path,np.stack([detach_image,unbin_output]))
+            np.save(correct_oracle_save_path,np.stack([detach_image,unbinarized_unet_seg]))
         #if normal, save it to save_dir
         else:
             # print("DEBUGGING")
             # print(unet_seg.shape)
             # print(arr.shape)
-            np.save(save_path,np.stack([arr,unet_seg]))
+            np.save(save_path,np.stack([detach_image,unbinarized_unet_seg]))
 
 #Removes all 0's from oracle_results (images that oracle said are incorrect)
 def remove_bad_oracle_results(oracle_results):
