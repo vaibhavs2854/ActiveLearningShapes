@@ -422,7 +422,7 @@ def evaluate_model_on_new_segmentations_and_save(model,segmentation_folder,saved
 
         #check if in saved_oracle_filepaths
         #If file labelled correct by oracle, save og segmentation and add new to separate dir
-        print(f"Debugging. Data shape is: {detach_image.shape}, and unbinarized shape is: {unbinarized_unet_seg.shape}, and unbin output shape is {unbin_output.shape}")
+        #print(f"Debugging. Data shape is: {detach_image.shape}, and unbinarized shape is: {unbinarized_unet_seg.shape}, and unbin output shape is {unbin_output.shape}")
         if filepath.split("/")[-1] in patient_ids:
             np.save(save_path,np.stack([detach_image,unbin_output]))
             np.save(correct_oracle_save_path,np.stack([detach_image,unbinarized_unet_seg]))
