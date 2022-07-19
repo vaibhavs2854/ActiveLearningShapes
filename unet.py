@@ -393,6 +393,7 @@ def evaluate_model_on_new_segmentations_and_save(model,segmentation_folder,saved
         unbin_output = arr_and_unbin_output[1,:,:].copy()
 
         unbin_output = image_transform(unbin_output)[0,:,:]
+        arr = exposure.equalize_hist(arr) #histogram equalization, as we histogram equalize in dataloader. 
         image = image_transform(arr)
         
         
