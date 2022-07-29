@@ -118,9 +118,9 @@ def query_oracle(oracle_results,oracle_results_thresholds,patient_scores,ground_
                 oracle_queries.append(list(patient_scores.keys())[i])
     else:
         print("You entered an unsupported query method.")
-        return oracle_results
+        return oracle_results,oracle_results_thresholds
 
-    ask_oracle_automatic(oracle_results,oracle_results_thresholds,oracle_queries,ground_truth_dir,segmentation_dir)
+    oracle_results, oracle_results_thresholds = ask_oracle_automatic(oracle_results,oracle_results_thresholds,oracle_queries,ground_truth_dir,segmentation_dir)
     
     return oracle_results, oracle_results_thresholds
 
