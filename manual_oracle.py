@@ -1,3 +1,4 @@
+from inspect import classify_class_attrs
 import numpy as np
 import torch
 import torchvision
@@ -72,7 +73,7 @@ def ask_oracle_automatic(oracle_results, oracle_results_thresholds,oracle_querie
     return oracle_results,oracle_results_thresholds
 
 
-def query_oracle(oracle_results,oracle_results_thresholds,patient_scores,ground_truth_dir,segmentation_dir,query_method="uniform",query_number=10,threshold=0.2):
+def query_oracle(oracle_results,oracle_results_thresholds,patient_scores,ground_truth_dir,segmentation_dir,query_method="uniform",query_number=10):
     if query_number==0:
         print("Why are you asking for 0 queries?")
         return oracle_results
@@ -84,20 +85,20 @@ def query_oracle(oracle_results,oracle_results_thresholds,patient_scores,ground_
         step = len(patient_scores)//(query_number-1)
         for i in range(0,len(patient_scores),step):
             if list(patient_scores.keys())[i] not in list(oracle_results.keys()):
-                oracle_queries.append((list(patient_scores.keys())[i],threshold))
+                oracle_queries.append(list(patient_scores.keys())[i])
     elif query_method=="random":
         indices = random.sample(len(patient_scores), query_number)
         for i in indices:
             if list(patient_scores.keys())[i] not in list(oracle_results.keys()):
-                oracle_queries.append((list(patient_scores.keys())[i],threshold))
+                oracle_queries.append(list(patient_scores.keys())[i])
     elif query_method=="best":
          for i in range(query_number-1,-1,-1):
              if list(patient_scores.keys())[i] not in list(oracle_results.keys()):
-                oracle_queries.append((list(patient_scores.keys())[i],threshold))
+                oracle_queries.append(list(patient_scores.keys())[i])
     elif query_method=="worst":
         for i in range(query_number):
             if list(patient_scores.keys())[i] not in list(oracle_results.keys()):
-                oracle_queries.append((list(patient_scores.keys())[i],threshold))
+                oracle_queries.append(list(patient_scores.keys())[i])
     elif 'middle' in query_method:
         #find the number of elements closest to 0.5
         split_val = float(query_method.split('=')[-1])
@@ -106,7 +107,7 @@ def query_oracle(oracle_results,oracle_results_thresholds,patient_scores,ground_
         indices = list(range(middle_index,middle_index+int(query_number/2))) + range(left_bound,middle_index)
         for i in indices:
             if list(patient_scores.keys())[i] not in list(oracle_results.keys()):
-                oracle_queries.append((list(patient_scores.keys())[i],threshold))
+                oracle_queries.append(list(patient_scores.keys())[i])
         print("Debugging for middle index: "  + str(middle_index) + " " + str(patient_scores[middle_index]))
     elif "percentile" in query_method:
         percentile = float(query_method.split('=')[-1])
@@ -114,7 +115,7 @@ def query_oracle(oracle_results,oracle_results_thresholds,patient_scores,ground_
         indices = list(range(near_index - int(query_number/2), near_index)) + list(range(near_index, near_index + int(query_number/2)))
         for i in indices:
             if list(patient_scores.keys())[i] not in list(oracle_results.keys()):
-                oracle_queries.append((list(patient_scores.keys())[i],threshold))
+                oracle_queries.append(list(patient_scores.keys())[i])
     else:
         print("You entered an unsupported query method.")
         return oracle_results
@@ -122,3 +123,16 @@ def query_oracle(oracle_results,oracle_results_thresholds,patient_scores,ground_
     ask_oracle_automatic(oracle_results,oracle_results_thresholds,oracle_queries,ground_truth_dir,segmentation_dir)
     
     return oracle_results, oracle_results_thresholds
+
+
+if __name__=="__main__":
+    model = None #Replace model with trained classifier for running experiments on active learning.
+    classifier_training_dir = "/usr/xtmp/vs196/mammoproj/Data/manualfa/train/" #Manually labelled train data. Not sure if we use this or validation dir.
+    dataloader = get_DataLoader(classifier_training_dir,32,2) 
+    oracle_results = dict()
+    oracle_results_thresholds = dict()
+    patient_scores = get_patient_scores(model,dataloader)
+    ground_truth_dir = "/usr/xtmp/vs196/mammoproj/Data/manualfa/manual_validation/" #manual segmentations
+    segmentation_dir = "/usr/xtmp/vs196/mammoproj/Data/manualfa/validation_histeq_ff/" #Not control. This segs from unet trained after one round of active learning (with flood fill).
+    #We may have to make a separate method to generate new segmentations based on different unet models.
+    oracle_results, oracle_results_thresholds = query_oracle(oracle_results,oracle_results_thresholds,patient_scores,ground_truth_dir,segmentation_dir,query_method="uniform",query_number=10)
