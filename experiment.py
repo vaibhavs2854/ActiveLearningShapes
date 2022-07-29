@@ -106,8 +106,33 @@ def evaluate_metric_on_validation(model,validation_dir):
         iou = intersection_over_union(unet_seg,mask)
         ious.append(iou)
     return np.average(np.asarray(ious))
+
+
+#Returns the original image, ground truth label, binarized UNet segmentation output, and iou of the ground truth and binarized seg output.
+#Takes in the image filepath and the model for segmenting.
+def grab_iou_of_image(image_filepath,model):
+    model.eval()
+    transforms_arr = [transforms.ToTensor(),transforms.Resize((256,256))]
+    image_transform = transforms.Compose(transforms_arr)
+
+    arr_and_bin_output = np.load(image_filepath)
+
+    arr = arr_and_bin_output[0,:,:].copy()
+    bin_output = arr_and_bin_output[1,:,:].copy()
+
+    mask = image_transform(bin_output)[0,:,:]
+    arr = exposure.equalize_hist(arr) #add hist equalization to 
+    image = image_transform(arr)        
     
-    
+    image = image.float()
+    image = convert_to_3channel(image).cuda()
+    image = transforms.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)) (image)
+
+    unet_seg = model(image)
+    unbinarized_unet_seg = F.softmax(unet_seg[0],dim=0)[1,:,:]
+    unet_seg = get_binary_mask(unbinarized_unet_seg).cpu()
+    iou = intersection_over_union(unet_seg,mask)
+    return image,mask,unet_seg,iou
 
 def control_run():
     #Initialize filepaths 
