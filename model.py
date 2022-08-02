@@ -70,6 +70,44 @@ def initialize_and_train_model(dataloader,batch_size=32,epochs=15):
             
     return model,loss_tracker,criterion,optimizer
 
+
+#Difference from above is that we don't randomly show 0,1. Model sees that all segmentations are correct because it is.
+def initialize_and_train_model_experiment(dataloader,batch_size=32,epochs=15):
+    #Initial training on mismatched image-label pairs (half matched w/ label 1, half mismatched w/ label 0)
+    num_classes=2
+
+    torch.hub._validate_not_a_forked_repo=lambda a,b,c: True
+    model = torch.hub.load('pytorch/vision:v0.10.0', 'vgg11', pretrained=False)
+    model.classifier[6] = nn.Linear(4096,num_classes)
+    model = model.cuda()
+    
+    criterion = nn.CrossEntropyLoss()
+    #criterion = nn.BCEWithLogitsLoss();
+    #optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
+    optimizer = torch.optim.SGD(model.parameters(),lr=0.001,momentum=0.9)
+    loss_tracker = [] #plot loss
+
+    for epoch in range(epochs):
+        model.train()
+        tr_loss = 0.0
+        for image,mask,_ in tqdm(dataloader):
+            feed_in_data = torch.empty((image.shape[0],3,256,256))
+            labels = [1]*image.shape[0] 
+            #print(feed_in_data.shape)
+            images = transforms.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)) (feed_in_data)
+            images = images.cuda()
+            labels = torch.from_numpy(np.array(labels)).cuda()
+            optimizer.zero_grad()
+
+            y = model(images)
+
+            loss = criterion(y,labels)
+            loss_tracker.append(loss.detach().cpu().item()/batch_size)
+            loss.backward()
+            optimizer.step()
+            
+    return model,loss_tracker,criterion,optimizer
+
 #evaluate, keep track of dict w/ (patient_id -> output of model) Sort by (|output-0.5|), take min and these are "unsure" classifications
 def get_patient_scores(model,dataloader):
     patient_scores = {}
