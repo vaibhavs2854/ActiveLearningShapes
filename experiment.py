@@ -317,16 +317,17 @@ def active_learning_experiment(active_learning_train_cycles,query_cycles,unet_mo
     unet_model,loss_tracker,metric_tracker = unet_update_model(unet_model,unet_dataloader,num_epochs=10)
 
     #evaluation 1: generate new segmentations of training images and save them. (This is for the next stage of active learning)
+    segmentation_folder = segmentation_dir
+    correct_save_dir = "/usr/xtmp/vs196/mammoproj/Code/ActiveLearning/AllOracleRuns/Run_" + run_id + "/Iter" + str(iter_num) + "/UNetSegmentations_C/"
+    save_dir = "/usr/xtmp/vs196/mammoproj/Code/ActiveLearning/AllOracleRuns/Run_" + run_id + "/Iter" + str(iter_num) + "/UNetSegmentations/"
+    evaluate_model_on_new_segmentations_and_save(unet_model,segmentation_folder,saved_oracle_filepaths,correct_save_dir,save_dir,iter_num)
+    next_iter_segmentation_dir = convert_directory_to_floodfill(save_dir,iter0=False)
+    #push next_iter_segmentation_dir as the oracle image dir for next iteration.
 
     #evaluation 2: generate segmentations of validation and see how accurate our new segmenter is
-
-
-
-
-    
-    #save_dir is defunct
-
-
+    manual_fa_valid_dir = f"/usr/xtmp/vs196/mammoproj/Data/manualfa/manual_validation/"
+    metric = evaluate_metric_on_validation(unet_model,manual_fa_valid_dir)
+    print(f"Metric of new segmenter after active learning is: {metric}.")
 
 
 #Outline of experiment:
