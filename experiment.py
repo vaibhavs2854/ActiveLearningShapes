@@ -32,6 +32,7 @@ from dataloader import *
 from model import *
 from oracle import *
 from unet import *
+from manual_oracle import query_oracle_automatic,ask_oracle_automatic
 
 #grab arguments from command line
 parser = argparse.ArgumentParser()
@@ -176,4 +177,118 @@ def control_run():
 
 
 if __name__ == "__main__":
-    control_run()
+    model_save_path = "/usr/xtmp/vs196/mammoproj/Code/SavedModels/ControlALUNet/0726/unetmodel_size150.pth"
+    model = torch.load(model_save_path)
+    image_filepath = "/usr/xtmp/vs196/mammoproj/Data/manualfa/manual_validation/Round/DP_AAZA_161134.npy"
+    image,mask,unet_seg,iou = grab_iou_of_image(image_filepath,model)
+    print(f"IOU of this image is: {iou}")
+
+
+#Evaluates BINARIZED segmentations from a eval_dir containing image and manual segmentation.
+#Saves as [image,segmentation] np stack in save_dir.
+#DID NOT NEED THIS CODE
+def generate_segmentations(model,manual_seg_dir,save_dir):
+    image_transform = None #FIX
+    images_filepaths = []
+    for root, dirs, files in os.walk(manual_seg_dir):
+            for file in files:
+                if file.endswith(".npy"):
+                    images_filepaths.append(os.path.join(root,file))
+        
+    for image_filepath in tqdm(images_filepaths):
+        #Load image from filepath
+        image_and_manual_seg = np.load(image_filepath)
+        arr = image_and_manual_seg[0,:,:].copy()
+        loaded_image = arr.copy()
+        
+        #Preprocess image before feeding to model
+        arr = exposure.equalize_hist(arr) #add hist equalization
+        image = image_transform(arr)        
+        image = image.float()
+        image = convert_to_3channel(image).cuda()
+        image = transforms.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)) (image)
+
+        #Evaluate unbinarized unet seg
+        unet_seg = model(image)
+        unbinarized_unet_seg = F.softmax(unet_seg[0],dim=0)[1,:,:]
+
+        #Save to save_dir.
+        patID = '/'.join(image_filepath.split("/")[-2:])[:-4]
+        image_save_path = save_dir + patID + ".npy"
+        print(image_save_path)
+        break
+        #np.save(image_save_path,np.stack([loaded_image,unbinarized_unet_seg]))
+    print(f"Saved unbinarized segmentations of {len(images_filepaths)} images to {save_dir}.")
+
+#One run to generate unbinarized training segmentations from scratch.
+#generate_segmentations(model,classifier_training_dir,"/usr/xtmp/vs196/mammoproj/Data/manualfa/unbinarized_train_seg/")
+
+
+def plot_active_learning_training_metrics(all_patient_scores,oracle_results):
+    pass
+
+#Saves any correct segmentations found by the oracle, and additionally pickle dumps any structures 
+def save_active_learning_results(run_id,iter_num,oracle_results,oracle_results_thresholds,im_dir):
+    save_dir = "/usr/xtmp/vs196/mammoproj/Code/ActiveLearning/AllOracleRuns/Run_" + run_id + "/Iter" + str(iter_num)
+    correct_segs_save_dir = save_dir + "CorrectSegmentations/"
+
+    saved_oracle_filepaths = save_oracle_results(oracle_results,oracle_results_thresholds,im_dir,correct_segs_save_dir)
+    fpath = save_dir + "saved_data_struct/"
+    if not os.path.exists(fpath):
+        os.makedirs(fpath)
+    saved_oracle_filepaths_filepath = save_dir + "saved_data_struct/Oracle_Filepaths.pickle"
+    pickle.dump(saved_oracle_filepaths,open(saved_oracle_filepaths_filepath,"wb"))
+    pickle.dump(oracle_results,open(save_dir + "saved_data_struct/Oracle_Results.pickle","wb"))
+    pickle.dump(oracle_results_thresholds,open(save_dir + "saved_data_struct/Oracle_Results_Thresholds.pickle","wb"))
+    
+
+def active_learning_experiment(active_learning_train_cycles,query_cycles,run_id,iter_num):
+    #ACTIVE LEARNING STAGE
+
+    #File definitions and static setup
+    classifier_training_dir = "/usr/xtmp/vs196/mammoproj/Data/manualfa/train/"
+    ground_truth_dir = "/usr/xtmp/vs196/mammoproj/Data/manualfa/train/"
+    segmentation_dir = "/usr/xtmp/mammo/image_datasets/data_split_july2021/square_ROI_by_shape_segmentations_unbin/train/" #Unbinarized train segmentations from something idk.
+    oracle_results = dict()
+    oracle_results_thresholds = dict()
+    total_images_shown = 0
+
+    #Begin loop over number of active learning/
+    for active_learning_cycle in range(active_learning_train_cycles):
+        #Variable Definitions
+        dataloader = get_DataLoader(classifier_training_dir,32,2)
+        model,loss_tracker,criterion,optimizer = initialize_and_train_model(dataloader, epochs=10) #Initialize and train classifier for 10 epochs.  #TODO:rewrite dataloader to use all positive segmentations from manual classifier (NOT switching)
+        patient_scores = get_patient_scores(model,dataloader)
+        all_patient_scores = []
+
+        #Querying oracle - currently queries {query_cycles} times.
+        for query_iter in range(query_cycles):
+            query_number = 10
+            oracle_results, oracle_results_thresholds = query_oracle_automatic(oracle_results,oracle_results_thresholds,patient_scores,ground_truth_dir,segmentation_dir,query_method="uniform",query_number=query_number)
+            total_images_shown += query_number
+
+        #Updating classifier 1 epoch at a time for 5 epochs. 
+        for i in range(5):
+            model = model_update(model,dataloader,oracle_results,criterion,optimizer,num_epochs=1)
+
+            patient_scores = get_patient_scores(model,dataloader)
+            all_patient_scores.append(patient_scores)
+
+        #Space for plotting metrics if you want.
+        plot_active_learning_training_metrics(all_patient_scores,oracle_results)
+    
+        #Space for saving oracle results and pickling data structures
+        save_active_learning_results(run_id,iter_num,oracle_results,oracle_results_thresholds,classifier_training_dir)
+
+        print("Done with one iteration of active learning querying/updating")
+        
+    #SEGMENTATION STAGE
+    unet_model = None #load unet model for segmentation
+
+
+
+#Outline of experiment:
+#loop over:
+#   Active Learning Stage
+#   Segmentation Stage
+#   Evaluation Stage + Metrics
