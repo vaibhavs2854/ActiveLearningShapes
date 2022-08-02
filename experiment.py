@@ -330,6 +330,10 @@ def active_learning_experiment(active_learning_train_cycles,query_cycles,unet_mo
     metric = evaluate_metric_on_validation(unet_model,manual_fa_valid_dir)
     print(f"Metric of new segmenter after active learning is: {metric}.")
 
+    #potentially save model this iteration if we want.
+    model_save_path = "/usr/xtmp/vs196/mammoproj/Code/ActiveLearning/AllOracleRuns/Run_" + run_id + "/Iter" + str(iter_num) + "/unetmodel.pth"
+    torch.save(unet_model,model_save_path)
+
 
 #Outline of experiment:
 #loop over:
