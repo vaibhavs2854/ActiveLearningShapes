@@ -223,7 +223,6 @@ def generate_segmentations(model,manual_seg_dir,save_dir):
 #One run to generate unbinarized training segmentations from scratch.
 #generate_segmentations(model,classifier_training_dir,"/usr/xtmp/vs196/mammoproj/Data/manualfa/unbinarized_train_seg/")
 
-
 def plot_active_learning_training_metrics(all_patient_scores,oracle_results):
     pass
 
@@ -240,9 +239,31 @@ def save_active_learning_results(run_id,iter_num,oracle_results,oracle_results_t
     pickle.dump(saved_oracle_filepaths,open(saved_oracle_filepaths_filepath,"wb"))
     pickle.dump(oracle_results,open(save_dir + "saved_data_struct/Oracle_Results.pickle","wb"))
     pickle.dump(oracle_results_thresholds,open(save_dir + "saved_data_struct/Oracle_Results_Thresholds.pickle","wb"))
+
+    return saved_oracle_filepaths
+
+
+def update_dir_with_oracle_info(run_id,iter_num,oracle_results_thresholds):
+    save_dir = "/usr/xtmp/vs196/mammoproj/Code/ActiveLearning/AllOracleRuns/Run_" + run_id + "/Iter" + str(iter_num) + "/OracleThresholdedImages/"
+    if not os.path.exists(save_dir):
+        os.makedirs(save_dir)
+    #find all filepaths in im_dir
+    all_filepaths = []
+    for root, dirs, files in os.walk(im_dir):
+        for file in files:
+            if file.endswith(".npy"):
+                all_filepaths.append(os.path.join(root, file))
+
+    threshold_and_save_images(all_filepaths, oracle_results_thresholds, save_dir)
+    save_dir = convert_directory_to_floodfill(save_dir,iter0=False)
+    return save_dir
+
+def redirect_saved_oracle_filepaths_to_thresheld_directory(saved_oracle_filepaths,im_dir):
+    new_filepaths = [(im_dir + "/".join(filepath.split("/")[-2:])) for filepath in saved_oracle_filepaths]
+    return new_filepaths
     
 
-def active_learning_experiment(active_learning_train_cycles,query_cycles,run_id,iter_num):
+def active_learning_experiment(active_learning_train_cycles,query_cycles,unet_model,run_id,iter_num):
     #ACTIVE LEARNING STAGE
 
     #File definitions and static setup
@@ -252,12 +273,13 @@ def active_learning_experiment(active_learning_train_cycles,query_cycles,run_id,
     oracle_results = dict()
     oracle_results_thresholds = dict()
     total_images_shown = 0
+    saved_oracle_filepaths = []
 
     #Begin loop over number of active learning/
     for active_learning_cycle in range(active_learning_train_cycles):
         #Variable Definitions
         dataloader = get_DataLoader(classifier_training_dir,32,2)
-        model,loss_tracker,criterion,optimizer = initialize_and_train_model(dataloader, epochs=10) #Initialize and train classifier for 10 epochs.  #TODO:rewrite dataloader to use all positive segmentations from manual classifier (NOT switching)
+        model,loss_tracker,criterion,optimizer = initialize_and_train_model_experiment(dataloader, epochs=10) #Initialize and train classifier for 10 epochs.  #TODO:rewrite dataloader to use all positive segmentations from manual classifier (NOT switching)
         patient_scores = get_patient_scores(model,dataloader)
         all_patient_scores = []
 
@@ -278,12 +300,32 @@ def active_learning_experiment(active_learning_train_cycles,query_cycles,run_id,
         plot_active_learning_training_metrics(all_patient_scores,oracle_results)
     
         #Space for saving oracle results and pickling data structures
-        save_active_learning_results(run_id,iter_num,oracle_results,oracle_results_thresholds,classifier_training_dir)
+        saved_oracle_filepaths = save_active_learning_results(run_id,iter_num,oracle_results,oracle_results_thresholds,classifier_training_dir)
 
         print("Done with one iteration of active learning querying/updating")
-        
+
     #SEGMENTATION STAGE
-    unet_model = None #load unet model for segmentation
+
+    #Preprocess data with information learned from active learning.
+    unet_train_dir = update_dir_with_oracle_info(run_id,iter_num,oracle_results_thresholds)
+    new_saved_oracle_filepaths = redirect_saved_oracle_filepaths_to_thresheld_directory(saved_oracle_filepaths, unet_train_dir)
+    unet_dataloader = unet_dataloader(new_saved_oracle_filepaths,8,2)
+    loss_tracker = []
+    metric_tracker = []
+
+    #Train model using learned oracle data for 10 epochs
+    unet_model,loss_tracker,metric_tracker = unet_update_model(unet_model,unet_dataloader,num_epochs=10)
+
+    #evaluation 1: generate new segmentations of training images and save them. (This is for the next stage of active learning)
+
+    #evaluation 2: generate segmentations of validation and see how accurate our new segmenter is
+
+
+
+
+    
+    #save_dir is defunct
+
 
 
 
