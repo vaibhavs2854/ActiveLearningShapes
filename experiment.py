@@ -243,7 +243,7 @@ def save_active_learning_results(run_id,iter_num,oracle_results,oracle_results_t
     return saved_oracle_filepaths
 
 
-def update_dir_with_oracle_info(run_id,iter_num,oracle_results_thresholds):
+def update_dir_with_oracle_info(run_id,iter_num,oracle_results_thresholds,im_dir):
     save_dir = "/usr/xtmp/vs196/mammoproj/Code/ActiveLearning/AllOracleRuns/Run_" + run_id + "/Iter" + str(iter_num) + "/OracleThresholdedImages/"
     if not os.path.exists(save_dir):
         os.makedirs(save_dir)
@@ -303,11 +303,11 @@ def active_learning_experiment(active_learning_train_cycles,query_cycles,unet_mo
     #IN-BETWEEN STAGE
     #Space for saving oracle results and pickling data structures
     saved_oracle_filepaths = save_active_learning_results(run_id,iter_num,oracle_results,oracle_results_thresholds,classifier_training_dir)
-    oracle_results = remove_bad_oracle_results(oracle_results)
-    
+    oracle_results = remove_bad_oracle_results(oracle_results) #not necessary as oracle_results is never even used again in this method.
+     
     #SEGMENTATION STAGE
     #Preprocess data with information learned from active learning.
-    unet_train_dir = update_dir_with_oracle_info(run_id,iter_num,oracle_results_thresholds)
+    unet_train_dir = update_dir_with_oracle_info(run_id,iter_num,oracle_results_thresholds,segmentation_dir)
     new_saved_oracle_filepaths = redirect_saved_oracle_filepaths_to_thresheld_directory(saved_oracle_filepaths, unet_train_dir)
     unet_dataloader = unet_dataloader(new_saved_oracle_filepaths,8,2)
     loss_tracker = []
