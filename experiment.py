@@ -265,7 +265,6 @@ def redirect_saved_oracle_filepaths_to_thresheld_directory(saved_oracle_filepath
 
 def active_learning_experiment(active_learning_train_cycles,query_cycles,unet_model,run_id,iter_num):
     #ACTIVE LEARNING STAGE
-
     #File definitions and static setup
     classifier_training_dir = "/usr/xtmp/vs196/mammoproj/Data/manualfa/train/"
     ground_truth_dir = "/usr/xtmp/vs196/mammoproj/Data/manualfa/train/"
@@ -298,14 +297,15 @@ def active_learning_experiment(active_learning_train_cycles,query_cycles,unet_mo
 
         #Space for plotting metrics if you want.
         plot_active_learning_training_metrics(all_patient_scores,oracle_results)
-    
-        #Space for saving oracle results and pickling data structures
-        saved_oracle_filepaths = save_active_learning_results(run_id,iter_num,oracle_results,oracle_results_thresholds,classifier_training_dir)
 
         print("Done with one iteration of active learning querying/updating")
 
+    #IN-BETWEEN STAGE
+    #Space for saving oracle results and pickling data structures
+    saved_oracle_filepaths = save_active_learning_results(run_id,iter_num,oracle_results,oracle_results_thresholds,classifier_training_dir)
+    oracle_results = remove_bad_oracle_results(oracle_results)
+    
     #SEGMENTATION STAGE
-
     #Preprocess data with information learned from active learning.
     unet_train_dir = update_dir_with_oracle_info(run_id,iter_num,oracle_results_thresholds)
     new_saved_oracle_filepaths = redirect_saved_oracle_filepaths_to_thresheld_directory(saved_oracle_filepaths, unet_train_dir)
@@ -321,8 +321,9 @@ def active_learning_experiment(active_learning_train_cycles,query_cycles,unet_mo
     correct_save_dir = "/usr/xtmp/vs196/mammoproj/Code/ActiveLearning/AllOracleRuns/Run_" + run_id + "/Iter" + str(iter_num) + "/UNetSegmentations_C/"
     save_dir = "/usr/xtmp/vs196/mammoproj/Code/ActiveLearning/AllOracleRuns/Run_" + run_id + "/Iter" + str(iter_num) + "/UNetSegmentations/"
     evaluate_model_on_new_segmentations_and_save(unet_model,segmentation_folder,saved_oracle_filepaths,correct_save_dir,save_dir,iter_num)
-    next_iter_segmentation_dir = convert_directory_to_floodfill(save_dir,iter0=False)
-    #push next_iter_segmentation_dir as the oracle image dir for next iteration.
+    #next_iter_segmentation_dir = convert_directory_to_floodfill(save_dir,iter0=False) #WE SHOULDN'T NEED THIS BECAUSE WE ARE SAVING UNBINARIZED OUTPUT
+    #push next_iter_segmentation_dir as the oracle image dir for next iteration. NVM look below
+    #Push save_dir as the oracle image dir for the next iteration. That's where we populate with unbinarized segmentations from recently trained UNet
 
     #evaluation 2: generate segmentations of validation and see how accurate our new segmenter is
     manual_fa_valid_dir = f"/usr/xtmp/vs196/mammoproj/Data/manualfa/manual_validation/"
