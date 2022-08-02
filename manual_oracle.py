@@ -69,11 +69,11 @@ def ask_oracle_automatic(oracle_results, oracle_results_thresholds,oracle_querie
             oracle_results[patID] = 1
         else:
             oracle_results[patID] = 0
-        oracle_results_thresholds[patID] = max_threshold
+        oracle_results_thresholds[patID] = max_threshold #Regardless of the correctness of segmentation, we assign the threshold which gives the highest IOU.
     return oracle_results,oracle_results_thresholds
 
 
-def query_oracle(oracle_results,oracle_results_thresholds,patient_scores,ground_truth_dir,segmentation_dir,query_method="uniform",query_number=10):
+def query_oracle_automatic(oracle_results,oracle_results_thresholds,patient_scores,ground_truth_dir,segmentation_dir,query_method="uniform",query_number=10):
     if query_number==0:
         print("Why are you asking for 0 queries?")
         return oracle_results
@@ -135,4 +135,4 @@ if __name__=="__main__":
     ground_truth_dir = "/usr/xtmp/vs196/mammoproj/Data/manualfa/manual_validation/" #manual segmentations
     segmentation_dir = "/usr/xtmp/vs196/mammoproj/Data/manualfa/validation_histeq_ff/" #Not control. This segs from unet trained after one round of active learning (with flood fill).
     #We may have to make a separate method to generate new segmentations based on different unet models.
-    oracle_results, oracle_results_thresholds = query_oracle(oracle_results,oracle_results_thresholds,patient_scores,ground_truth_dir,segmentation_dir,query_method="uniform",query_number=10)
+    oracle_results, oracle_results_thresholds = query_oracle_automatic(oracle_results,oracle_results_thresholds,patient_scores,ground_truth_dir,segmentation_dir,query_method="uniform",query_number=10)
