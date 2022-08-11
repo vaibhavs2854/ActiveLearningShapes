@@ -32,7 +32,7 @@ from dataloader import *
 from model import *
 from oracle import *
 from unet import *
-from manual_oracle import query_oracle_automatic,ask_oracle_automatic
+from manual_oracle import get_binary_mask_threshold_torch, query_oracle_automatic,ask_oracle_automatic
 
 #grab arguments from command line
 parser = argparse.ArgumentParser()
@@ -40,7 +40,7 @@ parser.add_argument("--random_seed", type=int)
 args = parser.parse_args()
 random_seed_number = args.random_seed
 
-random_seed_number = 1
+#random_seed_number = 2
 
 #set random seeds
 torch.manual_seed(random_seed_number)
@@ -66,7 +66,7 @@ def from_manual_segmentation_dataloader_with_size(manual_seg_dir,batch_size,num_
     return new_unet_dataloader
 
 
-def intersection_over_union(output_mask,ground_mask):
+def intersection_over_union_exp(output_mask,ground_mask):
     ground_mask = get_ints(ground_mask).squeeze(1)
     summed = ground_mask + output_mask
     twos = summed - 2
@@ -75,7 +75,7 @@ def intersection_over_union(output_mask,ground_mask):
     outputs = torch.div(num,denom)
     return torch.mean(outputs)
 
-def evaluate_metric_on_validation(model,validation_dir):
+def evaluate_metric_on_validation(model,validation_dir,viz_save=False):
     model.eval()
     transforms_arr = [transforms.ToTensor(),transforms.Resize((256,256))]
     image_transform = transforms.Compose(transforms_arr)
@@ -103,9 +103,34 @@ def evaluate_metric_on_validation(model,validation_dir):
 
         unet_seg = model(image)
         unbinarized_unet_seg = F.softmax(unet_seg[0],dim=0)[1,:,:]
-        unet_seg = get_binary_mask(unbinarized_unet_seg).cpu()
-        iou = intersection_over_union(unet_seg,mask)
-        ious.append(iou)
+        max_iou = -1
+        thresholded_mask = None
+        thresholds = [0.0001,0.0005,0.001,0.005,0.01,0.05,0.1,0.15,0.2,0.25,0.3,0.35,0.4] #try to find the best iou
+        for threshold in thresholds:
+            unet_seg = get_binary_mask_threshold_torch(unbinarized_unet_seg,threshold).detach().cpu().numpy()
+            unet_seg_ff = largest_contiguous_region(unet_seg) #flood fill binary segmentation
+            unet_seg_ff_torch = torch.from_numpy(unet_seg_ff)
+            #unet_seg = get_binary_mask(unbinarized_unet_seg).cpu()
+            iou = intersection_over_union_exp(unet_seg_ff_torch,mask)
+            if(iou>max_iou):
+                max_iou = iou
+                thresholded_mask = unet_seg_ff
+        ious.append(max_iou)
+        test_images_save_path = ""
+        id = filepath.split("/")[-1]
+        if(max_iou<0.1):
+            #save bad iou
+            #save unet_seg_threshold 
+            test_images_save_path = f"/usr/xtmp/vs196/mammoproj/Code/ActiveLearning/iou_test_images/bad/{id}"
+        if(max_iou>0.9):
+            #save good iou
+            test_images_save_path = f"/usr/xtmp/vs196/mammoproj/Code/ActiveLearning/iou_test_images/good/{id}"
+        if viz_save:
+            np.save(test_images_save_path,np.stack([mask.numpy(),thresholded_mask]))
+    #Grab histogram of ious 
+    #Floodfill after thresholding and before iou calculation
+    ious_np = np.asarray(ious)
+    np.save("/usr/xtmp/vs196/mammoproj/Code/ActiveLearning/iouhist_1.npy",ious_np)
     return np.average(np.asarray(ious))
 
 
@@ -174,15 +199,6 @@ def control_run():
     np.save(metrics_save_path,metrics_np)
     plt.savefig("/usr/xtmp/vs196/mammoproj/Code/ActiveLearning/0727controlrun/control_graph.png")
     print("Done")
-
-
-if __name__ == "__main__":
-    model_save_path = "/usr/xtmp/vs196/mammoproj/Code/SavedModels/ControlALUNet/0726/unetmodel_size150.pth"
-    model = torch.load(model_save_path)
-    image_filepath = "/usr/xtmp/vs196/mammoproj/Data/manualfa/manual_validation/Round/DP_AAZA_161134.npy"
-    image,mask,unet_seg,iou = grab_iou_of_image(image_filepath,model)
-    print(f"IOU of this image is: {iou}")
-
 
 #Evaluates BINARIZED segmentations from a eval_dir containing image and manual segmentation.
 #Saves as [image,segmentation] np stack in save_dir.
@@ -263,7 +279,7 @@ def redirect_saved_oracle_filepaths_to_thresheld_directory(saved_oracle_filepath
     return new_filepaths
     
 
-def active_learning_experiment(active_learning_train_cycles,query_cycles,unet_model,run_id,iter_num):
+def active_learning_experiment(active_learning_train_cycles,query_num,unet_model,run_id,iter_num):
     #ACTIVE LEARNING STAGE
     #File definitions and static setup
     classifier_training_dir = "/usr/xtmp/vs196/mammoproj/Data/manualfa/train/"
@@ -274,19 +290,21 @@ def active_learning_experiment(active_learning_train_cycles,query_cycles,unet_mo
     total_images_shown = 0
     saved_oracle_filepaths = []
 
+    #Variable Definitions
+    dataloader = get_DataLoader(classifier_training_dir,32,2)
+    model,loss_tracker,criterion,optimizer = initialize_and_train_model_experiment(dataloader, epochs=10) #Initialize and train classifier for 10 epochs.
+    patient_scores = get_patient_scores(model,dataloader)
+    all_patient_scores = []
+
     #Begin loop over number of active learning/
     for active_learning_cycle in range(active_learning_train_cycles):
-        #Variable Definitions
-        dataloader = get_DataLoader(classifier_training_dir,32,2)
-        model,loss_tracker,criterion,optimizer = initialize_and_train_model_experiment(dataloader, epochs=10) #Initialize and train classifier for 10 epochs.  #TODO:rewrite dataloader to use all positive segmentations from manual classifier (NOT switching)
-        patient_scores = get_patient_scores(model,dataloader)
-        all_patient_scores = []
-
         #Querying oracle - currently queries {query_cycles} times.
-        for query_iter in range(query_cycles):
-            query_number = 10
-            oracle_results, oracle_results_thresholds = query_oracle_automatic(oracle_results,oracle_results_thresholds,patient_scores,ground_truth_dir,segmentation_dir,query_method="uniform",query_number=query_number)
-            total_images_shown += query_number
+        try:
+            oracle_results, oracle_results_thresholds = query_oracle_automatic(oracle_results,oracle_results_thresholds,patient_scores,ground_truth_dir,segmentation_dir,query_method="percentile=0.8",query_number=query_num)
+        except:
+            print("Something went wrong with the automatic oracle query")
+            sys.exit(1)
+        total_images_shown += query_num
 
         #Updating classifier 1 epoch at a time for 5 epochs. 
         for i in range(5):
@@ -304,17 +322,23 @@ def active_learning_experiment(active_learning_train_cycles,query_cycles,unet_mo
     #Space for saving oracle results and pickling data structures
     saved_oracle_filepaths = save_active_learning_results(run_id,iter_num,oracle_results,oracle_results_thresholds,classifier_training_dir)
     oracle_results = remove_bad_oracle_results(oracle_results) #not necessary as oracle_results is never even used again in this method.
-     
+
+    #if no images are classified as correct by oracle, print and return
+    if len(saved_oracle_filepaths)==0:
+        print("No correctly classified oracle results")
+        return 0
+    else:
+        print(f"Oracle correctly classified {len(saved_oracle_filepaths)} images.")
     #SEGMENTATION STAGE
     #Preprocess data with information learned from active learning.
     unet_train_dir = update_dir_with_oracle_info(run_id,iter_num,oracle_results_thresholds,segmentation_dir)
     new_saved_oracle_filepaths = redirect_saved_oracle_filepaths_to_thresheld_directory(saved_oracle_filepaths, unet_train_dir)
-    unet_dataloader = unet_dataloader(new_saved_oracle_filepaths,8,2)
+    unetdataloader = unet_dataloader(new_saved_oracle_filepaths,8,2)
     loss_tracker = []
     metric_tracker = []
 
     #Train model using learned oracle data for 10 epochs
-    unet_model,loss_tracker,metric_tracker = unet_update_model(unet_model,unet_dataloader,num_epochs=10)
+    unet_model,loss_tracker,metric_tracker = unet_update_model(unet_model,unetdataloader,num_epochs=20)
 
     #evaluation 1: generate new segmentations of training images and save them. (This is for the next stage of active learning)
     segmentation_folder = segmentation_dir
@@ -327,12 +351,18 @@ def active_learning_experiment(active_learning_train_cycles,query_cycles,unet_mo
 
     #evaluation 2: generate segmentations of validation and see how accurate our new segmenter is
     manual_fa_valid_dir = f"/usr/xtmp/vs196/mammoproj/Data/manualfa/manual_validation/"
-    metric = evaluate_metric_on_validation(unet_model,manual_fa_valid_dir)
+    if(query_number==40 or query_number==200):
+        viz=True
+    else:
+        viz = False
+    metric = evaluate_metric_on_validation(unet_model,manual_fa_valid_dir,viz_save=viz)
     print(f"Metric of new segmenter after active learning is: {metric}.")
 
     #potentially save model this iteration if we want.
     model_save_path = "/usr/xtmp/vs196/mammoproj/Code/ActiveLearning/AllOracleRuns/Run_" + run_id + "/Iter" + str(iter_num) + "/unetmodel.pth"
     torch.save(unet_model,model_save_path)
+
+    return metric
 
 
 #Outline of experiment:
@@ -340,3 +370,21 @@ def active_learning_experiment(active_learning_train_cycles,query_cycles,unet_mo
 #   Active Learning Stage
 #   Segmentation Stage
 #   Evaluation Stage + Metrics
+
+
+if __name__ == "__main__":
+    metrics = []
+    print("Starting")
+    #query_numbers = [5,10,20,30,40,50,60,70,80,90,100,150,200,250,300,350,400,450,500,600]
+    query_numbers = [20,30,40,50,60,70,80,90,100,125,150,175,200,225,250,275,300]
+    for query_number in query_numbers:
+        model_save_path = "/usr/xtmp/vs196/mammoproj/Code/SavedModels/ControlALUNet/0726/unetmodel_size150.pth"
+        #model_save_path = grab a fresh unet.
+        unet_model = torch.load(model_save_path)
+        metric = active_learning_experiment(10,query_number,unet_model,"08_11_1",iter_num=query_number)
+        print(f"Done with {query_number}")
+        metrics.append(metric)
+
+    for i in range(len(metrics)):
+        print(f"{query_numbers[i]} {metrics[i]}")
+    print("done")
