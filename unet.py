@@ -37,6 +37,18 @@ def preprocess_mask(mask):
     mask[(mask == 1.0) | (mask == 3.0)] = 1.0
     return mask
 
+def gaus2d(x=0, y=0, mx=0, my=0, sx=50, sy=50):
+    return 1. / (2. * np.pi * sx * sy) * np.exp(-((x - mx)**2. / (2. * sx**2.) + (y - my)**2. / (2. * sy**2.)))
+
+def generate_gaussian_weights(size=256):
+    # define normalized 2D gaussian
+    x = np.linspace(-1*(size/2-1), size/2,num=size)
+    y = np.linspace(-1*(size/2-1), size/2,num=size)
+    x, y = np.meshgrid(x, y) # get 2D variables instead of 1D
+    z = gaus2d(x, y)
+    z = z/np.amax(z)
+    return z
+
 class InhouseGetData(Dataset):
     def __init__(self,image_filepaths,image_transform,data_aug=True,has_weights=True):
         super().__init__()
@@ -44,6 +56,7 @@ class InhouseGetData(Dataset):
         self.image_transform = image_transform
         self.data_aug = data_aug
         self.has_weights = has_weights
+        self.gaussian_weight = generate_gaussian_weights()
 
     def __len__(self):
         return len(self.image_filepaths)
@@ -71,10 +84,12 @@ class InhouseGetData(Dataset):
         #print(arr.shape)
         
         image = self.image_transform(arr)
+        image = torch.from_numpy(np.multiply(self.gaussian_weight,image.numpy())) #Gaussian weight the image before training.
         #image = our_transform(image)
         #print(image.shape)
         #print("OUTSIDE")
         mask_label = self.image_transform(mask)
+        mask_label = torch.where(mask_label>0.5,1,0) #Make sure mask is binarized. Check with Alina if 0.5 is right.
         #mask_label = our_transform(mask_label)
         if self.has_weights:
             weights_label = self.image_transform(weights)
@@ -126,6 +141,7 @@ class CBISDDSMGetData(Dataset):
         #print(arr.shape)
         
         image = self.image_transform(arr)
+        
         #image = our_transform(image)
         #print(image.shape)
         #print("OUTSIDE")
@@ -231,8 +247,8 @@ def convert_to_3channel(x):
 
 def unet_update_model(model,inhouse_dataloader,num_epochs=10,has_weights=True,weight_ratio=0.5):    
     criterion = weightedpixelcros
-    optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
-    #optimizer = torch.optim.SGD(model.parameters(),lr=0.001,momentum=0.9)
+    #optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
+    optimizer = torch.optim.SGD(model.parameters(),lr=0.001,momentum=0.9)
     loss_tracker = [] #plot loss
     metric_tracker = []
 

@@ -65,6 +65,18 @@ def from_manual_segmentation_dataloader_with_size(manual_seg_dir,batch_size,num_
     new_unet_dataloader = unet_dataloader(filepaths,batch_size,num_workers)
     return new_unet_dataloader
 
+#Standard deviation of 50
+def gaus2d(x=0, y=0, mx=0, my=0, sx=50, sy=50):
+    return 1. / (2. * np.pi * sx * sy) * np.exp(-((x - mx)**2. / (2. * sx**2.) + (y - my)**2. / (2. * sy**2.)))
+
+def generate_gaussian_weights(size=256):
+    # define normalized 2D gaussian
+    x = np.linspace(-1*(size/2-1), size/2,num=size)
+    y = np.linspace(-1*(size/2-1), size/2,num=size)
+    x, y = np.meshgrid(x, y) # get 2D variables instead of 1D
+    z = gaus2d(x, y)
+    z = z/np.amax(z)
+    return z
 
 def intersection_over_union_exp(output_mask,ground_mask):
     ground_mask = get_ints(ground_mask).squeeze(1)
@@ -81,6 +93,7 @@ def evaluate_metric_on_validation(model,validation_dir,viz_save=False):
     image_transform = transforms.Compose(transforms_arr)
     ious = []
     segmentation_filepaths = []
+    gaussian_weight = generate_gaussian_weights()
 
     for root, dirs, files in os.walk(validation_dir):
         for file in files:
@@ -94,8 +107,10 @@ def evaluate_metric_on_validation(model,validation_dir,viz_save=False):
         bin_output = arr_and_bin_output[1,:,:].copy()
 
         mask = image_transform(bin_output)[0,:,:]
+        mask = torch.where(mask>0.5,1,0) #Makes sure mask is binarized for iou calculation. Check if 0.5 is correct with Alina.
         arr = exposure.equalize_hist(arr) #add hist equalization to 
-        image = image_transform(arr)        
+        image = image_transform(arr)   
+        image = torch.from_numpy(np.multiply(gaussian_weight,image.numpy())) #Apply Gaussian filter 
         
         image = image.float()
         image = convert_to_3channel(image).cuda()
@@ -376,7 +391,7 @@ if __name__ == "__main__":
     metrics = []
     print("Starting")
     #query_numbers = [5,10,20,30,40,50,60,70,80,90,100,150,200,250,300,350,400,450,500,600]
-    query_numbers = [20,30,40,50,60,70,80,90,100,125,150,175,200,225,250,275,300]
+    query_numbers = [20,30,40,50,60,70,80,90,100,125,150,175,200]
     for query_number in query_numbers:
         model_save_path = "/usr/xtmp/vs196/mammoproj/Code/SavedModels/ControlALUNet/0726/unetmodel_size150.pth"
         #model_save_path = grab a fresh unet.
