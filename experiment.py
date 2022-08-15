@@ -136,16 +136,16 @@ def evaluate_metric_on_validation(model,validation_dir,viz_save=False):
         if(max_iou<0.1):
             #save bad iou
             #save unet_seg_threshold 
-            test_images_save_path = f"/usr/xtmp/vs196/mammoproj/Code/ActiveLearning/iou_test_images/bad/{id}"
+            test_images_save_path = f"/usr/xtmp/vs196/mammoproj/Code/ActiveLearning/iou_test_images_1/bad/{id}"
         if(max_iou>0.9):
             #save good iou
-            test_images_save_path = f"/usr/xtmp/vs196/mammoproj/Code/ActiveLearning/iou_test_images/good/{id}"
+            test_images_save_path = f"/usr/xtmp/vs196/mammoproj/Code/ActiveLearning/iou_test_images_1/good/{id}"
         if viz_save:
             np.save(test_images_save_path,np.stack([mask.numpy(),thresholded_mask]))
     #Grab histogram of ious 
     #Floodfill after thresholding and before iou calculation
     ious_np = np.asarray(ious)
-    np.save("/usr/xtmp/vs196/mammoproj/Code/ActiveLearning/iouhist_1.npy",ious_np)
+    np.save("/usr/xtmp/vs196/mammoproj/Code/ActiveLearning/iouhist_randomrun2.npy",ious_np)
     return np.average(np.asarray(ious))
 
 
@@ -292,7 +292,87 @@ def update_dir_with_oracle_info(run_id,iter_num,oracle_results_thresholds,im_dir
 def redirect_saved_oracle_filepaths_to_thresheld_directory(saved_oracle_filepaths,im_dir):
     new_filepaths = [(im_dir + "/".join(filepath.split("/")[-2:])) for filepath in saved_oracle_filepaths]
     return new_filepaths
-    
+
+
+
+#pass in model
+#generate patient scores here
+def query_oracle_and_update_classifier_and_save_active_learning_results(active_learning_train_cycles,al_model,oracle_results,ground_truth_dir,segmentation_dir,query_num,al_dataloader,criterion,optimizer,classifier_training_dir,run_id,iter_num):
+    all_patient_scores = []
+    patient_scores = get_patient_scores(al_model,al_dataloader)
+    for active_learning_cycle in range(active_learning_train_cycles):
+        #Querying oracle - currently queries {query_cycles} times.
+        try:
+            oracle_results, oracle_results_thresholds = query_oracle_automatic(oracle_results,oracle_results_thresholds,patient_scores,ground_truth_dir,segmentation_dir,query_method="random",query_number=query_num)
+        except:
+            print("Something went wrong with the automatic oracle query")
+            sys.exit(1)
+
+        #Updating classifier 1 epoch at a time for 5 epochs. 
+        for i in range(5):
+            al_model = model_update(al_model,al_dataloader,oracle_results,criterion,optimizer,num_epochs=1)
+
+            patient_scores = get_patient_scores(al_model,al_dataloader)
+            all_patient_scores.append(patient_scores)
+
+        #Space for plotting metrics if you want.
+        plot_active_learning_training_metrics(all_patient_scores,oracle_results)
+
+    #IN-BETWEEN STAGE
+    #Space for saving oracle results and pickling data structures
+    saved_oracle_filepaths = save_active_learning_results(run_id,iter_num,oracle_results,oracle_results_thresholds,classifier_training_dir)
+    oracle_results = remove_bad_oracle_results(oracle_results) #not necessary as oracle_results is never even used again in this method.
+    return saved_oracle_filepaths,oracle_results,oracle_results_thresholds,al_model
+
+def retrain_unet(saved_oracle_filepaths,oracle_results_thresholds,segmentation_dir,run_id,iter_num):
+    unet_train_dir = update_dir_with_oracle_info(run_id,iter_num,oracle_results_thresholds,segmentation_dir)
+    new_saved_oracle_filepaths = redirect_saved_oracle_filepaths_to_thresheld_directory(saved_oracle_filepaths, unet_train_dir)
+    unetdataloader = unet_dataloader(new_saved_oracle_filepaths,8,2)
+    loss_tracker = []
+    metric_tracker = []
+
+    #Train model using learned oracle data for 10 epochs
+    unet_model,loss_tracker,metric_tracker = unet_update_model(unet_model,unetdataloader,num_epochs=20)
+
+    return unet_model
+
+def evaluate_model_on_train(segmentation_dir,saved_oracle_filepaths,run_id,iter_num):
+    segmentation_folder = segmentation_dir
+    correct_save_dir = "/usr/xtmp/vs196/mammoproj/Code/ActiveLearning/AllOracleRuns/Run_" + run_id + "/Iter" + str(iter_num) + "/UNetSegmentations_C/"
+    save_dir = "/usr/xtmp/vs196/mammoproj/Code/ActiveLearning/AllOracleRuns/Run_" + run_id + "/Iter" + str(iter_num) + "/UNetSegmentations/"
+    evaluate_model_on_new_segmentations_and_save(unet_model,segmentation_folder,saved_oracle_filepaths,correct_save_dir,save_dir,iter_num)
+    return save_dir
+
+
+def active_learning_experiment_multiple(run_id,active_learning_train_cycles,query_num):
+    #initial unet model
+    #initial classifier
+    classifier_training_dir = "/usr/xtmp/vs196/mammoproj/Data/manualfa/train/"
+    ground_truth_dir = "/usr/xtmp/vs196/mammoproj/Data/manualfa/train/"
+    segmentation_dir = "/usr/xtmp/mammo/image_datasets/data_split_july2021/square_ROI_by_shape_segmentations_unbin/train/" #Unbinarized train segmentations from something idk.
+    manual_fa_valid_dir = ""
+    oracle_results = dict()
+    active_learning_loop_num = 2
+    iter_num = 1
+
+    al_dataloader = get_DataLoader(classifier_training_dir,32,2)
+    al_model,loss_tracker,criterion,optimizer = initialize_and_train_model_experiment(al_dataloader, epochs=10) #Initialize and train classifier for 10 epochs.
+    metrics = []
+    for iter in range(active_learning_loop_num):
+        #do active learning experiment
+        saved_oracle_filepaths,oracle_results,oracle_results_thresholds,al_model = query_oracle_and_update_classifier_and_save_active_learning_results(active_learning_train_cycles,al_model,oracle_results,ground_truth_dir,segmentation_dir,query_num,al_dataloader,criterion,optimizer,classifier_training_dir,run_id,iter_num)
+        retrain_unet(saved_oracle_filepaths,oracle_results_thresholds,segmentation_dir,run_id,iter_num)
+        new_segmentation_dir = evaluate_model_on_train(segmentation_dir,saved_oracle_filepaths,run_id,iter_num)
+
+        metric = evaluate_metric_on_validation(unet_model,manual_fa_valid_dir,viz_save=False)
+        metrics.append(metric)
+        
+        #redirect segmentation directory
+        segmentation_dir = new_segmentation_dir
+        iter_num+=1
+    return
+
+
 
 def active_learning_experiment(active_learning_train_cycles,query_num,unet_model,run_id,iter_num):
     #ACTIVE LEARNING STAGE
@@ -315,7 +395,7 @@ def active_learning_experiment(active_learning_train_cycles,query_num,unet_model
     for active_learning_cycle in range(active_learning_train_cycles):
         #Querying oracle - currently queries {query_cycles} times.
         try:
-            oracle_results, oracle_results_thresholds = query_oracle_automatic(oracle_results,oracle_results_thresholds,patient_scores,ground_truth_dir,segmentation_dir,query_method="percentile=0.8",query_number=query_num)
+            oracle_results, oracle_results_thresholds = query_oracle_automatic(oracle_results,oracle_results_thresholds,patient_scores,ground_truth_dir,segmentation_dir,query_method="uniform",query_number=query_num)
         except:
             print("Something went wrong with the automatic oracle query")
             sys.exit(1)
@@ -367,7 +447,7 @@ def active_learning_experiment(active_learning_train_cycles,query_num,unet_model
     #evaluation 2: generate segmentations of validation and see how accurate our new segmenter is
     manual_fa_valid_dir = f"/usr/xtmp/vs196/mammoproj/Data/manualfa/manual_validation/"
     if(query_number==40 or query_number==200):
-        viz=True
+        viz=False
     else:
         viz = False
     metric = evaluate_metric_on_validation(unet_model,manual_fa_valid_dir,viz_save=viz)
@@ -396,7 +476,7 @@ if __name__ == "__main__":
         model_save_path = "/usr/xtmp/vs196/mammoproj/Code/SavedModels/ControlALUNet/0726/unetmodel_size150.pth"
         #model_save_path = grab a fresh unet.
         unet_model = torch.load(model_save_path)
-        metric = active_learning_experiment(10,query_number,unet_model,"08_11_1",iter_num=query_number)
+        metric = active_learning_experiment(10,query_number,unet_model,"08_15_randomrun2",iter_num=query_number)
         print(f"Done with {query_number}")
         metrics.append(metric)
 
