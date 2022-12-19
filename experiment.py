@@ -4,6 +4,7 @@ import torch
 import torchvision
 from time import time
 import random
+import pandas as pd
 
 from torch.utils.data import Dataset, DataLoader
 from torchvision import datasets, transforms
@@ -374,7 +375,7 @@ def active_learning_experiment_multiple(run_id,active_learning_train_cycles,quer
 
 
 
-def active_learning_experiment(active_learning_train_cycles,query_num,unet_model,run_id,iter_num):
+def active_learning_experiment(active_learning_train_cycles,query_num,unet_model,run_id,query_number,oracle_query_method):
     #ACTIVE LEARNING STAGE
     #File definitions and static setup
     classifier_training_dir = "/usr/xtmp/vs196/mammoproj/Data/manualfa/train/"
@@ -395,7 +396,7 @@ def active_learning_experiment(active_learning_train_cycles,query_num,unet_model
     for active_learning_cycle in range(active_learning_train_cycles):
         #Querying oracle - currently queries {query_cycles} times.
         try:
-            oracle_results, oracle_results_thresholds = query_oracle_automatic(oracle_results,oracle_results_thresholds,patient_scores,ground_truth_dir,segmentation_dir,query_method="uniform",query_number=query_num)
+            oracle_results, oracle_results_thresholds = query_oracle_automatic(oracle_results,oracle_results_thresholds,patient_scores,ground_truth_dir,segmentation_dir,query_method=oracle_query_method,query_number=query_num)
         except:
             print("Something went wrong with the automatic oracle query")
             sys.exit(1)
@@ -415,7 +416,7 @@ def active_learning_experiment(active_learning_train_cycles,query_num,unet_model
 
     #IN-BETWEEN STAGE
     #Space for saving oracle results and pickling data structures
-    saved_oracle_filepaths = save_active_learning_results(run_id,iter_num,oracle_results,oracle_results_thresholds,classifier_training_dir)
+    saved_oracle_filepaths = save_active_learning_results(run_id,query_number,oracle_results,oracle_results_thresholds,classifier_training_dir)
     oracle_results = remove_bad_oracle_results(oracle_results) #not necessary as oracle_results is never even used again in this method.
 
     #if no images are classified as correct by oracle, print and return
@@ -426,27 +427,27 @@ def active_learning_experiment(active_learning_train_cycles,query_num,unet_model
         print(f"Oracle correctly classified {len(saved_oracle_filepaths)} images.")
     #SEGMENTATION STAGE
     #Preprocess data with information learned from active learning.
-    unet_train_dir = update_dir_with_oracle_info(run_id,iter_num,oracle_results_thresholds,segmentation_dir)
+    unet_train_dir = update_dir_with_oracle_info(run_id,query_number,oracle_results_thresholds,segmentation_dir)
     new_saved_oracle_filepaths = redirect_saved_oracle_filepaths_to_thresheld_directory(saved_oracle_filepaths, unet_train_dir)
     unetdataloader = unet_dataloader(new_saved_oracle_filepaths,8,2)
     loss_tracker = []
     metric_tracker = []
 
     #Train model using learned oracle data for 10 epochs
-    unet_model,loss_tracker,metric_tracker = unet_update_model(unet_model,unetdataloader,num_epochs=20)
+    unet_model,loss_tracker,metric_tracker = unet_update_model(unet_model,unetdataloader,num_epochs=5)
 
     #evaluation 1: generate new segmentations of training images and save them. (This is for the next stage of active learning)
     segmentation_folder = segmentation_dir
-    correct_save_dir = "/usr/xtmp/vs196/mammoproj/Code/ActiveLearning/AllOracleRuns/Run_" + run_id + "/Iter" + str(iter_num) + "/UNetSegmentations_C/"
-    save_dir = "/usr/xtmp/vs196/mammoproj/Code/ActiveLearning/AllOracleRuns/Run_" + run_id + "/Iter" + str(iter_num) + "/UNetSegmentations/"
-    evaluate_model_on_new_segmentations_and_save(unet_model,segmentation_folder,saved_oracle_filepaths,correct_save_dir,save_dir,iter_num)
+    correct_save_dir = "/usr/xtmp/vs196/mammoproj/Code/ActiveLearning/AllOracleRuns/Run_" + run_id + "/Iter" + str(query_number) + "/UNetSegmentations_C/"
+    save_dir = "/usr/xtmp/vs196/mammoproj/Code/ActiveLearning/AllOracleRuns/Run_" + run_id + "/Iter" + str(query_number) + "/UNetSegmentations/"
+    evaluate_model_on_new_segmentations_and_save(unet_model,segmentation_folder,saved_oracle_filepaths,correct_save_dir,save_dir,query_number)
     #next_iter_segmentation_dir = convert_directory_to_floodfill(save_dir,iter0=False) #WE SHOULDN'T NEED THIS BECAUSE WE ARE SAVING UNBINARIZED OUTPUT
     #push next_iter_segmentation_dir as the oracle image dir for next iteration. NVM look below
     #Push save_dir as the oracle image dir for the next iteration. That's where we populate with unbinarized segmentations from recently trained UNet
 
     #evaluation 2: generate segmentations of validation and see how accurate our new segmenter is
     manual_fa_valid_dir = f"/usr/xtmp/vs196/mammoproj/Data/manualfa/manual_validation/"
-    if(query_number==40 or query_number==200):
+    if(query_num==40 or query_num==200):
         viz=False
     else:
         viz = False
@@ -454,10 +455,10 @@ def active_learning_experiment(active_learning_train_cycles,query_num,unet_model
     print(f"Metric of new segmenter after active learning is: {metric}.")
 
     #potentially save model this iteration if we want.
-    model_save_path = "/usr/xtmp/vs196/mammoproj/Code/ActiveLearning/AllOracleRuns/Run_" + run_id + "/Iter" + str(iter_num) + "/unetmodel.pth"
+    model_save_path = "/usr/xtmp/vs196/mammoproj/Code/ActiveLearning/AllOracleRuns/Run_" + run_id + "/Iter" + str(query_number) + "/unetmodel.pth"
     torch.save(unet_model,model_save_path)
 
-    return metric
+    return metric,model_save_path
 
 
 #Outline of experiment:
@@ -467,19 +468,55 @@ def active_learning_experiment(active_learning_train_cycles,query_num,unet_model
 #   Evaluation Stage + Metrics
 
 
-if __name__ == "__main__":
-    metrics = []
-    print("Starting")
+def run_active_learning_experiment(run_id,random_seed):
+    print("Starting run")
+    #pandas dataframe where columns are query_type query_number IOU location of saved model
+    experiment_output = pd.DataFrame(columns=['random_seed','query_type','query_number','IOU','saved_model_location'])
     #query_numbers = [5,10,20,30,40,50,60,70,80,90,100,150,200,250,300,350,400,450,500,600]
     query_numbers = [20,30,40,50,60,70,80,90,100,125,150,175,200]
-    for query_number in query_numbers:
-        model_save_path = "/usr/xtmp/vs196/mammoproj/Code/SavedModels/ControlALUNet/0726/unetmodel_size150.pth"
-        #model_save_path = grab a fresh unet.
-        unet_model = torch.load(model_save_path)
-        metric = active_learning_experiment(10,query_number,unet_model,"08_15_randomrun2",iter_num=query_number)
-        print(f"Done with {query_number}")
-        metrics.append(metric)
+    oracle_query_methods = ["uniform","random","percentile=0.8","best","worst"]
+    for oracle_query_method in oracle_query_methods:
+        for query_number in query_numbers:
+            model_save_path = "/usr/xtmp/vs196/mammoproj/Code/SavedModels/ControlALUNet/0726/unetmodel_size150.pth"
+            run_unique_id = f"{run_id}_{oracle_query_method}_{query_number}_{random_seed}"
+            #model_save_path = grab a fresh unet.
+            unet_model = torch.load(model_save_path)
+            metric,saved_model_location = active_learning_experiment(10,
+                                                                    query_number,
+                                                                    unet_model,
+                                                                    run_unique_id,
+                                                                    iter_num=query_number,
+                                                                    oracle_query_method="uniform")
+            print(f"Done with {query_number} for query method {oracle_query_method}")
+            experiment_ouptut = experiment_output.append({'random_seed':random_seed,
+                                                        'query_type':oracle_query_method,
+                                                        'query_number':query_number,
+                                                        'IOU':metric,
+                                                        'saved_model_location':saved_model_location})
 
-    for i in range(len(metrics)):
-        print(f"{query_numbers[i]} {metrics[i]}")
-    print("done")
+    print("Finished run")
+    return experiment_output
+
+
+if __name__ == "__main__":
+    random_seed_number = 44
+    torch.manual_seed(random_seed_number)
+    torch.cuda.manual_seed(random_seed_number)
+    np.random.seed(random_seed_number)
+    random.seed(random_seed_number)
+    torch.backends.cudnn.enabled=False
+    torch.backends.cudnn.deterministic=True
+
+    run_id = "10_24_run_percentile"
+    experiment_output = run_active_learning_experiment(run_id,random_seed_number)
+    experiment_output.to_csv(f"/usr/xtmp/vs196/mammoproj/Code/ActiveLearning/AllOracleRuns/Run_{run_id}/experiment_output.csv", sep=',')
+    
+
+
+
+    #save the experiment output pandas dataframe
+
+
+    # for i in range(len(metrics)):
+    #     print(f"{query_numbers[i]} {metrics[i]}")
+    # print("done")

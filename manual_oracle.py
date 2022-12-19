@@ -32,22 +32,38 @@ from model import *
 from oracle import *
 from unet import *
 
+def get_ints_torch(mask):
+    return torch.where(mask>0.2,1,0)
+
+
+def get_binary_mask_threshold_torch(mask,threshold):
+    return torch.where(mask > threshold, 1, 0)
+
+
 def intersection_over_union(output_mask,ground_mask):
-    ground_mask = get_ints(ground_mask).squeeze(1)
+    ground_mask = get_ints_torch(ground_mask).squeeze(1)
     summed = ground_mask + output_mask
     twos = summed - 2
-    num = 256*256 - np.count_nonzero(twos)
-    denom = np.count_nonzero(summed)
-    outputs = np.div(num,denom)
-    return np.mean(outputs)
+    num = 256*256 - torch.count_nonzero(twos)
+    denom = torch.count_nonzero(summed)
+    outputs = torch.div(num,denom)
+    return torch.mean(outputs)
 
 #TODO: Check if patID has shape subdir. If not, you're going to have to find them manually.
 def calculate_iou(patID,threshold,ground_truth_dir,segmentation_dir):
     ground_truth_path = ground_truth_dir + patID + ".npy"
     segmentation_path = segmentation_dir + patID + ".npy"
-    ground_truth = np.load(ground_truth_path)
-    segmentation = np.load(segmentation_path)
-    binarized = get_binary_mask_threshold(segmentation,threshold)
+
+    ground_truth = np.load(ground_truth_path)[1,:,:]
+    segmentation = np.load(segmentation_path)[1,:,:]
+    
+    transforms_arr = [transforms.ToTensor(),transforms.Resize((256,256))]
+    image_transform = transforms.Compose(transforms_arr)
+    
+    ground_truth = image_transform(ground_truth)[0,:,:]
+    segmentation = image_transform(segmentation)[0,:,:]
+    
+    binarized = get_binary_mask_threshold_torch(segmentation,threshold)
     return intersection_over_union(binarized,ground_truth)
 
 #Mimics same input/output as ask_oracle from oracle.py. 
@@ -57,7 +73,7 @@ def ask_oracle_automatic(oracle_results, oracle_results_thresholds,oracle_querie
         max_iou = -1
         max_threshold = 0
         #calculate iou over a variety of thresholds
-        thresholds = [0.01,0.05,0.1,0.15,0.2]
+        thresholds = [0.0001,0.0005,0.001,0.005,0.01,0.05,0.1,0.15,0.2,0.25,0.3,0.35,0.4]
         for threshold in thresholds:
             iou = calculate_iou(patID,threshold,ground_truth_dir,segmentation_dir)
             #Check if proposed segmentation is very close to ground truth (Starting off at 0.2)
@@ -81,11 +97,49 @@ def query_oracle_automatic(oracle_results,oracle_results_thresholds,patient_scor
         print("Query too big for number of patients")
         return oracle_results
     oracle_queries = []
+    patient_scores_minus_oracle_results = []
+    # for patient_score in list(patient_scores.keys()):
+    #     if patient_score not in list(oracle_results.keys()):
+    #         patient_scores_minus_oracle_results.append(patient_score)
+    # if query_method=="uniform":
+    #     step = len(patient_scores_minus_oracle_results) // (query_number - 1)
+    #     for i in range(0,len(patient_scores_minus_oracle_results),step):
+    #         oracle_queries.append(patient_scores_minus_oracle_results[i])
+    # elif query_method=="random":
+    #     indices = random.sample(len(patient_scores_minus_oracle_results), query_number)
+    #     for i in indices:
+    #             oracle_queries.append(patient_scores_minus_oracle_results[i])
+    # elif query_method=="best":
+    #      for i in range(query_number-1,-1,-1):
+    #         oracle_queries.append(patient_scores_minus_oracle_results[i])
+    # elif query_method=="worst":
+    #     for i in range(query_number):
+    #             oracle_queries.append(patient_scores_minus_oracle_results[i])
+    # elif 'middle' in query_method:
+    #     #find the number of elements closest to 0.5
+    #     split_val = float(query_method.split('=')[-1])
+    #     middle_index = int(len(patient_scores_minus_oracle_results)/(1/split_val))
+    #     left_bound = 0 if middle_index - int(query_number/2) < 0 else middle_index - int(query_number/2)
+    #     indices = list(range(middle_index,middle_index+int(query_number/2))) + range(left_bound,middle_index)
+    #     for i in indices:
+    #             oracle_queries.append(patient_scores_minus_oracle_results[i])
+    #     print("Debugging for middle index: "  + str(middle_index) + " " + str(patient_scores[middle_index]))
+    # elif "percentile" in query_method:
+    #     percentile = float(query_method.split('=')[-1])
+    #     near_index = int(len(patient_scores_minus_oracle_results) * percentile)
+    #     indices = list(range(near_index - int(query_number/2), near_index)) + list(range(near_index, near_index + int(query_number/2)))
+    #     for i in indices:
+    #         oracle_queries.append(patient_scores_minus_oracle_results[i])
+    # else:
+    #     print("You entered an unsupported query method.")
+    #     return oracle_results,oracle_results_thresholds
+
     if query_method=="uniform":
         step = len(patient_scores)//(query_number-1)
         for i in range(0,len(patient_scores),step):
             if list(patient_scores.keys())[i] not in list(oracle_results.keys()):
                 oracle_queries.append(list(patient_scores.keys())[i])
+                
     elif query_method=="random":
         indices = random.sample(len(patient_scores), query_number)
         for i in indices:
