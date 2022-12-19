@@ -98,81 +98,81 @@ def query_oracle_automatic(oracle_results,oracle_results_thresholds,patient_scor
         return oracle_results
     oracle_queries = []
     patient_scores_minus_oracle_results = []
-    # for patient_score in list(patient_scores.keys()):
-    #     if patient_score not in list(oracle_results.keys()):
-    #         patient_scores_minus_oracle_results.append(patient_score)
-    # if query_method=="uniform":
-    #     step = len(patient_scores_minus_oracle_results) // (query_number - 1)
-    #     for i in range(0,len(patient_scores_minus_oracle_results),step):
-    #         oracle_queries.append(patient_scores_minus_oracle_results[i])
-    # elif query_method=="random":
-    #     indices = random.sample(len(patient_scores_minus_oracle_results), query_number)
-    #     for i in indices:
-    #             oracle_queries.append(patient_scores_minus_oracle_results[i])
-    # elif query_method=="best":
-    #      for i in range(query_number-1,-1,-1):
-    #         oracle_queries.append(patient_scores_minus_oracle_results[i])
-    # elif query_method=="worst":
-    #     for i in range(query_number):
-    #             oracle_queries.append(patient_scores_minus_oracle_results[i])
-    # elif 'middle' in query_method:
-    #     #find the number of elements closest to 0.5
-    #     split_val = float(query_method.split('=')[-1])
-    #     middle_index = int(len(patient_scores_minus_oracle_results)/(1/split_val))
-    #     left_bound = 0 if middle_index - int(query_number/2) < 0 else middle_index - int(query_number/2)
-    #     indices = list(range(middle_index,middle_index+int(query_number/2))) + range(left_bound,middle_index)
-    #     for i in indices:
-    #             oracle_queries.append(patient_scores_minus_oracle_results[i])
-    #     print("Debugging for middle index: "  + str(middle_index) + " " + str(patient_scores[middle_index]))
-    # elif "percentile" in query_method:
-    #     percentile = float(query_method.split('=')[-1])
-    #     near_index = int(len(patient_scores_minus_oracle_results) * percentile)
-    #     indices = list(range(near_index - int(query_number/2), near_index)) + list(range(near_index, near_index + int(query_number/2)))
-    #     for i in indices:
-    #         oracle_queries.append(patient_scores_minus_oracle_results[i])
-    # else:
-    #     print("You entered an unsupported query method.")
-    #     return oracle_results,oracle_results_thresholds
-
+    for patient_score in list(patient_scores.keys()):
+        if patient_score not in list(oracle_results.keys()):
+            patient_scores_minus_oracle_results.append(patient_score)
     if query_method=="uniform":
-        step = len(patient_scores)//(query_number-1)
-        for i in range(0,len(patient_scores),step):
-            if list(patient_scores.keys())[i] not in list(oracle_results.keys()):
-                oracle_queries.append(list(patient_scores.keys())[i])
-                
+        step = len(patient_scores_minus_oracle_results) // (query_number - 1)
+        for i in range(0,len(patient_scores_minus_oracle_results),step):
+            oracle_queries.append(patient_scores_minus_oracle_results[i])
     elif query_method=="random":
-        indices = random.sample(len(patient_scores), query_number)
+        indices = random.sample(len(patient_scores_minus_oracle_results), query_number)
         for i in indices:
-            if list(patient_scores.keys())[i] not in list(oracle_results.keys()):
-                oracle_queries.append(list(patient_scores.keys())[i])
+                oracle_queries.append(patient_scores_minus_oracle_results[i])
     elif query_method=="best":
          for i in range(query_number-1,-1,-1):
-             if list(patient_scores.keys())[i] not in list(oracle_results.keys()):
-                oracle_queries.append(list(patient_scores.keys())[i])
+            oracle_queries.append(patient_scores_minus_oracle_results[i])
     elif query_method=="worst":
         for i in range(query_number):
-            if list(patient_scores.keys())[i] not in list(oracle_results.keys()):
-                oracle_queries.append(list(patient_scores.keys())[i])
+                oracle_queries.append(patient_scores_minus_oracle_results[i])
     elif 'middle' in query_method:
         #find the number of elements closest to 0.5
         split_val = float(query_method.split('=')[-1])
-        middle_index = int(len(patient_scores.keys())/(1/split_val))
+        middle_index = int(len(patient_scores_minus_oracle_results)/(1/split_val))
         left_bound = 0 if middle_index - int(query_number/2) < 0 else middle_index - int(query_number/2)
         indices = list(range(middle_index,middle_index+int(query_number/2))) + range(left_bound,middle_index)
         for i in indices:
-            if list(patient_scores.keys())[i] not in list(oracle_results.keys()):
-                oracle_queries.append(list(patient_scores.keys())[i])
+                oracle_queries.append(patient_scores_minus_oracle_results[i])
         print("Debugging for middle index: "  + str(middle_index) + " " + str(patient_scores[middle_index]))
     elif "percentile" in query_method:
         percentile = float(query_method.split('=')[-1])
-        near_index = int(len(patient_scores.keys()) * percentile)
+        near_index = int(len(patient_scores_minus_oracle_results) * percentile)
         indices = list(range(near_index - int(query_number/2), near_index)) + list(range(near_index, near_index + int(query_number/2)))
         for i in indices:
-            if list(patient_scores.keys())[i] not in list(oracle_results.keys()):
-                oracle_queries.append(list(patient_scores.keys())[i])
+            oracle_queries.append(patient_scores_minus_oracle_results[i])
     else:
         print("You entered an unsupported query method.")
         return oracle_results,oracle_results_thresholds
+
+    # if query_method=="uniform":
+    #     step = len(patient_scores)//(query_number-1)
+    #     for i in range(0,len(patient_scores),step):
+    #         if list(patient_scores.keys())[i] not in list(oracle_results.keys()):
+    #             oracle_queries.append(list(patient_scores.keys())[i])
+                
+    # elif query_method=="random":
+    #     indices = random.sample(len(patient_scores), query_number)
+    #     for i in indices:
+    #         if list(patient_scores.keys())[i] not in list(oracle_results.keys()):
+    #             oracle_queries.append(list(patient_scores.keys())[i])
+    # elif query_method=="best":
+    #      for i in range(query_number-1,-1,-1):
+    #          if list(patient_scores.keys())[i] not in list(oracle_results.keys()):
+    #             oracle_queries.append(list(patient_scores.keys())[i])
+    # elif query_method=="worst":
+    #     for i in range(query_number):
+    #         if list(patient_scores.keys())[i] not in list(oracle_results.keys()):
+    #             oracle_queries.append(list(patient_scores.keys())[i])
+    # elif 'middle' in query_method:
+    #     #find the number of elements closest to 0.5
+    #     split_val = float(query_method.split('=')[-1])
+    #     middle_index = int(len(patient_scores.keys())/(1/split_val))
+    #     left_bound = 0 if middle_index - int(query_number/2) < 0 else middle_index - int(query_number/2)
+    #     indices = list(range(middle_index,middle_index+int(query_number/2))) + range(left_bound,middle_index)
+    #     for i in indices:
+    #         if list(patient_scores.keys())[i] not in list(oracle_results.keys()):
+    #             oracle_queries.append(list(patient_scores.keys())[i])
+    #     print("Debugging for middle index: "  + str(middle_index) + " " + str(patient_scores[middle_index]))
+    # elif "percentile" in query_method:
+    #     percentile = float(query_method.split('=')[-1])
+    #     near_index = int(len(patient_scores.keys()) * percentile)
+    #     indices = list(range(near_index - int(query_number/2), near_index)) + list(range(near_index, near_index + int(query_number/2)))
+    #     for i in indices:
+    #         if list(patient_scores.keys())[i] not in list(oracle_results.keys()):
+    #             oracle_queries.append(list(patient_scores.keys())[i])
+    # else:
+    #     print("You entered an unsupported query method.")
+    #     return oracle_results,oracle_results_thresholds
 
     oracle_results, oracle_results_thresholds = ask_oracle_automatic(oracle_results,oracle_results_thresholds,oracle_queries,ground_truth_dir,segmentation_dir)
     
