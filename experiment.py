@@ -434,7 +434,8 @@ def active_learning_experiment(active_learning_train_cycles, imgs_seen, segmtr_m
 
     # INITIALIZE CLASSIFIER
     # File definitions and static setup
-    ground_truth_dir = "/usr/xtmp/vs196/mammoproj/Data/manualfa/train/"
+    # ground_truth_dir = "/usr/xtmp/vs196/mammoproj/Data/manualfa/train/"
+    ground_truth_dir = "/usr/xtmp/vs196/mammoproj/Data/total_image_dataset/train/"
     # Unbinarized train segmentations from something idk.
     segmentation_dir = "/usr/xtmp/mammo/image_datasets/data_split_july2021/square_ROI_by_shape_segmentations_unbin/train/"
     classifier_training_dir = segmentation_dir  # should be CBIS-DDSM.
