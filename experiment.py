@@ -1,55 +1,35 @@
 # Python Library imports
-import numpy as np
-import torch
-import torchvision
+import os
+import sys
 from time import time
 import random
+
+import numpy as np
+import torch
+import ternausnet
 import pandas as pd
 
-from torch.utils.data import Dataset, DataLoader
-from torchvision import datasets, transforms
-from torch import nn, optim
-from torch.utils.data.sampler import SubsetRandomSampler
+from torchvision import transforms
 import torchvision.transforms.functional as TF
 import torch.nn.functional as F
-from torch.autograd import Variable
-import os
-import glob
-import cv2
 from tqdm import tqdm
 
 from matplotlib.pyplot import imsave, imread
 import matplotlib.pyplot as plt
-import sys
 import matplotlib.gridspec as gridspec
 
-import copy
 import pickle
 import argparse
 
 # Backend py file imports
-from floodfill import *
-from dataloader import *
-from model import *
-from oracle import *
-from unet import *
+from floodfill import convert_directory_to_floodfill
+from dataloader import get_DataLoader
+from model import model_update, get_patient_scores, initialize_and_train_model_experiment
+from oracle import largest_contiguous_region, save_oracle_results
+from unet import unet_dataloader, get_ints, unet_update_model
+from unet import threshold_and_save_images, remove_bad_oracle_results, evaluate_model_on_new_segmentations_and_save
+from unet import exposure, convert_to_3channel, get_binary_mask, intersection_over_union
 from manual_oracle import get_binary_mask_threshold_torch, query_oracle_automatic, ask_oracle_automatic
-
-# grab arguments from command line
-parser = argparse.ArgumentParser()
-parser.add_argument("--random_seed", type=int)
-args = parser.parse_args()
-random_seed_number = args.random_seed
-
-# random_seed_number = 2
-
-# set random seeds
-torch.manual_seed(random_seed_number)
-torch.cuda.manual_seed(random_seed_number)
-np.random.seed(random_seed_number)
-random.seed(random_seed_number)
-torch.backends.cudnn.enabled = False
-torch.backends.cudnn.deterministic = True
 
 
 # write a custom dataloader that only uses x images from the training dataset
@@ -390,7 +370,8 @@ def evaluate_model_on_train(segmentation_dir, saved_oracle_filepaths, run_id, it
     save_dir = "/usr/xtmp/vs196/mammoproj/Code/ActiveLearning/AllOracleRuns/Run_" + \
         run_id + "/Iter" + str(iter_num) + "/UNetSegmentations/"
     evaluate_model_on_new_segmentations_and_save(
-        unet_model, segmentation_folder, saved_oracle_filepaths, correct_save_dir, save_dir, iter_num)
+        # unet_model, 
+        segmentation_folder, saved_oracle_filepaths, correct_save_dir, save_dir, iter_num)
     return save_dir
 
 
@@ -420,7 +401,8 @@ def active_learning_experiment_multiple(run_id, active_learning_train_cycles, qu
             segmentation_dir, saved_oracle_filepaths, run_id, iter_num)
 
         metric = evaluate_metric_on_validation(
-            unet_model, manual_fa_valid_dir, viz_save=False)
+            # unet_model, 
+            manual_fa_valid_dir, viz_save=False)
         metrics.append(metric)
 
         # redirect segmentation directory

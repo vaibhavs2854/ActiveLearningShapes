@@ -1,27 +1,11 @@
 import numpy as np
 import torch
-import torchvision
-from time import time
-import random
 
-from torch.utils.data import Dataset, DataLoader
-from torchvision import datasets, transforms
-from torch import nn, optim
-from torch.utils.data.sampler import SubsetRandomSampler
-import torchvision.transforms.functional as TF
-import torch.nn.functional as F
-from torch.autograd import Variable
-import os
-import glob
-import cv2
+from torchvision import transforms
+from torch import nn
 from tqdm import tqdm
 
-from matplotlib.pyplot import imsave, imread
-import matplotlib.pyplot as plt
-import sys
-import matplotlib.gridspec as gridspec
-
-import copy
+# import copy
 
 
 def initialize_and_train_model(dataloader,batch_size=32,epochs=15):
@@ -130,7 +114,7 @@ def get_patient_scores(model,dataloader):
     return patient_scores
 
 
-    #Retrains the model given a dict of oracle results
+#Retrains the model given a dict of oracle results
 def model_update(model,dataloader,oracle_results,criterion,optimizer,batch_size=32,num_epochs=1):
     model.train()
     #Retrain one epoch

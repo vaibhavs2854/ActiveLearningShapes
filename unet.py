@@ -1,35 +1,27 @@
-import numpy as np
-import torch
-import torchvision
-from time import time
+import os
+# import sys
 import random
 
-from torch.utils.data import Dataset, DataLoader
-from torchvision import datasets, transforms
-from torch import nn, optim
-from torch.utils.data.sampler import SubsetRandomSampler
-import torchvision.transforms.functional as TF
-import torch.nn.functional as F
-from torch.autograd import Variable
-import os
-import glob
+import numpy as np
+import torch
 import cv2
 from tqdm import tqdm
 
+from torch.utils.data import Dataset, DataLoader
+from torchvision import transforms
+import torch.nn.functional as F
 
-from matplotlib.pyplot import imsave, imread
-import matplotlib.pyplot as plt
-import sys
+# from matplotlib.pyplot import imsave, imread
+# import matplotlib.pyplot as plt
 #import torchvision.transforms.InterpolationMode
 
-import ternausnet.models
-import albumentations as A
-import albumentations.augmentations.functional as AF
-from albumentations.pytorch import ToTensorV2
 from skimage import exposure
-from skimage.transform import resize
+from PIL import Image
 from scipy import signal
-import pickle
+# import albumentations as A
+# import albumentations.augmentations.functional as AF
+# from albumentations.pytorch import ToTensorV2
+# import pickle
 
 def preprocess_mask(mask):
     mask = mask.astype(np.float32)
@@ -462,8 +454,6 @@ def remove_bad_oracle_results(oracle_results):
 #Threshold value changed here
 def get_binary_mask(mask):
     return torch.where(mask > 0.2, 1, 0)
-
-        
 
 
 # Ref: https://stackoverflow.com/a/42579291/7521428
