@@ -1,36 +1,11 @@
-from inspect import classify_class_attrs
 import numpy as np
 import torch
-import torchvision
-from time import time
 import random
 
-from torch.utils.data import Dataset, DataLoader
-from torchvision import datasets, transforms
-from torch import nn, optim
-from torch.utils.data.sampler import SubsetRandomSampler
-import torchvision.transforms.functional as TF
-import torch.nn.functional as F
-from torch.autograd import Variable
-import os
-import glob
-import cv2
-from tqdm import tqdm
+from torchvision import transforms
 
-from matplotlib.pyplot import imsave, imread
-import matplotlib.pyplot as plt
-import sys
-import matplotlib.gridspec as gridspec
-
-import copy
-
-from floodfill import largest_contiguous_region
-
-from floodfill import *
-from dataloader import *
-from model import *
-from oracle import *
-from unet import *
+from dataloader import get_DataLoader
+from model import get_patient_scores
 
 def get_ints_torch(mask):
     return torch.where(mask>0.2,1,0)
