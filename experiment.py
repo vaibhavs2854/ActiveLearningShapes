@@ -158,8 +158,8 @@ def evaluate_metric_on_validation(model, validation_dir, viz_save=False):
     # Grab histogram of ious
     # Floodfill after thresholding and before iou calculation
     ious_np = np.asarray(ious)
-    np.save(
-        "/usr/xtmp/vs196/mammoproj/Code/ActiveLearning/iouhist_randomrun2.npy", ious_np)
+    # np.save(
+    #     "/usr/xtmp/vs196/mammoproj/Code/ActiveLearning/iouhist_randomrun2.npy", ious_np)
     return np.average(np.asarray(ious))
 
 
@@ -465,6 +465,8 @@ def active_learning_experiment(active_learning_train_cycles, imgs_seen, segmtr_m
             print(str(e))
             print("Something went wrong with the automatic oracle query")
             sys.exit(1)
+        # if oracle_results is None:
+        #     continue
         total_images_shown += 10
 
         # Updating classifier 1 epoch at a time for 5 epochs.
@@ -566,7 +568,7 @@ def run_active_learning_experiment(run_id, random_seed):
                                                           'query_type': oracle_query_method,
                                                           'imgs_seen': imgs_seen,
                                                           'IOU': validation_metric,
-                                                          'saved_model_location': saved_model_location})
+                                                          'saved_model_location': saved_model_location},ignore_index=True)
 
     print("Finished run")
     return experiment_output
