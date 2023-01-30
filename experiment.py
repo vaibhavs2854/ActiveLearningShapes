@@ -523,8 +523,10 @@ def active_learning_experiment(active_learning_train_cycles, imgs_seen, segmtr_m
 #   Evaluation Stage + Metrics
 
 
-def run_active_learning_experiment(run_id, random_seed):
+def run_active_learning_experiment(run_id, random_seed, base = 'nnunet'):
     print("Starting run")
+    base_ops = ['nnunet', 'unet']
+    assert base in base_ops, f"Parameter `base` should be in {base_ops}"
     # pandas dataframe where columns are query_type query_number IOU location of saved model
     experiment_output = pd.DataFrame(
         columns=['random_seed', 'query_type', 'imgs_seen', 'IOU', 'saved_model_location'])
@@ -534,13 +536,16 @@ def run_active_learning_experiment(run_id, random_seed):
                             "percentile=0.8", "best", "worst"]
     for oracle_query_method in oracle_query_methods:
         for imgs_seen in imgs_seen_list:
-            model_save_path = "/usr/xtmp/vs196/mammoproj/Code/SavedModels/ControlALUNet/0726/unetmodel_size150.pth"
+            if base == 'nnunet':
+                model_save_path = "/usr/xtmp/vs196/mammoproj/Code/SavedModels/ControlALUNet/0726/unetmodel_size150.pth"
+            elif base == 'unet':
+                model_save_path = "/usr/xtmp/vs196/mammoproj/Code/SavedModels/ControlALUNet/0726/unetmodel_size150.pth"
             run_unique_id = f"{run_id}_{oracle_query_method}_{imgs_seen}_{random_seed}"
             # model_save_path = grab a fresh unet.
-            unet_model = torch.load(model_save_path)
+            segmtr_model = torch.load(model_save_path)
             validation_metric, saved_model_location = active_learning_experiment(10,
                                                                       imgs_seen,
-                                                                      unet_model,
+                                                                      segmtr_model,
                                                                       run_unique_id,
                                                                       iter_num=0,
                                                                       oracle_query_method="uniform")
