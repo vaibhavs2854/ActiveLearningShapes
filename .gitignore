@@ -3,3 +3,7 @@ __pycache__/
 AllOracleRuns/
 *.out
 manufa_model/
+Untitled.ipynb
+nnunet_integration.ipynb
+slurm_out/
+to delete/
