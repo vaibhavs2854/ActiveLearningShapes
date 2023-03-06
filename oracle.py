@@ -174,16 +174,16 @@ def save_oracle_results(oracle_results,oracle_results_thresholds,im_dir,save_dir
         if(oracle_results[patient]==1):
             #good segmentation - save into another folder
             if(patient.startswith("/")):
-                save_path = save_dir+ patient[1:] + ".npy"
+                save_path = os.path.join(save_dir, patient[1:] + ".npy")
             else:
-                save_path = save_dir + patient + ".npy";
-            load_path = im_dir + patient + ".npy"
+                save_path = os.path.join(save_dir, patient + ".npy")
+            load_path = os.path.join(im_dir, patient + ".npy")
             shape_type = load_path.split("/")[-2]
             im = np.load(load_path)
             #threshold the correct seg according the oracle_results_thresholds
             mask = largest_contiguous_region(np.where(im[1,:,:]>oracle_results_thresholds[patient],1,0))
             im = np.stack([im[0,:,:], mask], axis=0)
-            save_dir_dir = save_dir + shape_type + "/"
+            save_dir_dir = os.path.join(save_dir, shape_type)
             if not os.path.exists(save_dir_dir):
                 os.makedirs(save_dir_dir)
             np.save(save_path,im)

@@ -373,9 +373,9 @@ def threshold_and_save_images(saved_oracle_filepaths, oracle_results_thresholds,
         mask = get_binary_mask_threshold(mask, threshold)
         to_save = np.stack([arr, mask])
         
-        save_save_dir = save_dir + "/".join(filepath.split("/")[-2:])
-        if not os.path.exists(save_dir + filepath.split("/")[-2]):
-            os.makedirs(save_dir + filepath.split("/")[-2])
+        save_save_dir = os.path.join(save_dir, "/".join(filepath.split("/")[-2:]))
+        if not os.path.exists(os.path.join(save_dir, filepath.split("/")[-2])):
+            os.makedirs(os.path.join(save_dir, filepath.split("/")[-2]))
         np.save(save_save_dir, to_save)
 
 
@@ -418,16 +418,16 @@ def evaluate_model_on_new_segmentations_and_save(model,segmentation_folder,saved
         unbinarized_unet_seg = unbinarized_unet_seg.detach().cpu().numpy()
         #grab filename and make sure save directories are defined
         #filename = "/".join(filepath.split("/")[-2:])
-        class_subfolder = save_dir + filepath.split("/")[-2] + "/"
+        class_subfolder = os.path.join(save_dir, filepath.split("/")[-2] + "/")
         if not os.path.exists(class_subfolder):
             os.makedirs(class_subfolder)
-        save_path = class_subfolder + filepath.split("/")[-1]
+        save_path = os.path.join(class_subfolder, filepath.split("/")[-1])
 
         #do the same for the labelled correctly by oracle folder
-        class_subfolder = correct_save_dir + filepath.split("/")[-2] + "/"
+        class_subfolder = os.path.join(correct_save_dir, filepath.split("/")[-2] + "/")
         if not os.path.exists(class_subfolder):
             os.makedirs(class_subfolder)
-        correct_oracle_save_path = class_subfolder + filepath.split("/")[-1]
+        correct_oracle_save_path = os.path.join(class_subfolder,filepath.split("/")[-1])
 
         #check if in saved_oracle_filepaths
         #If file labelled correct by oracle, save og segmentation and add new to separate dir
