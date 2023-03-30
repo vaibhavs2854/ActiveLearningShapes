@@ -368,13 +368,13 @@ def run_active_learning_experiment(run_id, output_dir, random_seed, unet = False
         columns=['random_seed', 'query_type', 'imgs_seen', 'IOU', 'saved_model_location'])
 
     imgs_seen_list = [20, 30, 40, 50, 60, 70, 80, 90, 100, 120, 150, 170, 200]
-    # imgs_seen_list = [20, 90]
     oracle_query_methods = ["uniform",]
 #     oracle_query_methods = ["uniform", "random",
 #                             "percentile=0.8", "best", "worst"]
     for oracle_query_method in oracle_query_methods:
         for imgs_seen in imgs_seen_list:
             run_unique_id = f"{run_id}_{oracle_query_method}_{imgs_seen}_{random_seed}"
+            print(run_unique_id)
             if unet:
                 model_save_path = "/usr/xtmp/vs196/mammoproj/Code/SavedModels/ControlALUNet/0726/unetmodel_size150.pth"
                 # model_save_path = grab a fresh unet.

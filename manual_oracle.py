@@ -51,11 +51,11 @@ def ask_oracle_automatic(oracle_results, oracle_results_thresholds,oracle_querie
         thresholds = [0.0001,0.0005,0.001,0.005,0.01,0.05,0.1,0.15,0.2,0.25,0.3,0.35,0.4]
         iou = calculate_iou(patID,iou_threshold,ground_truth_dir,segmentation_dir)
         for threshold in thresholds:
-            # try:
-            #     iou = calculate_iou(patID,threshold,ground_truth_dir,segmentation_dir)
-            # except:
-            #     return None,None
-            #Check if proposed segmentation is very close to ground truth (Starting off at 0.2)
+            try:
+                iou = calculate_iou(patID,threshold,ground_truth_dir,segmentation_dir)
+            except:
+                return None,None
+            # Check if proposed segmentation is very close to ground truth (Starting off at 0.2)
             if iou > max_iou:
                 max_iou = iou
                 max_threshold = threshold
@@ -85,7 +85,7 @@ def query_oracle_automatic(oracle_results,oracle_results_thresholds,patient_scor
         for i in range(0,len(patient_scores_minus_oracle_results),step):
             oracle_queries.append(patient_scores_minus_oracle_results[i])
     elif query_method=="random":
-        indices = random.sample(len(patient_scores_minus_oracle_results), query_number)
+        indices = random.sample(np.arange(len(patient_scores_minus_oracle_results)), query_number)
         for i in indices:
                 oracle_queries.append(patient_scores_minus_oracle_results[i])
     elif query_method=="best":

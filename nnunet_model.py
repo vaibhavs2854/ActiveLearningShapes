@@ -193,7 +193,6 @@ def nnunet_update_model(new_dataset_dir, network = '2d',
     trainer.log_file = None
     trainer.use_progress_bar = True
     trainer.num_batches_per_epoch = int(np.rint((len(glob.glob(os.path.join( trainer.dataset_directory,'gt_segmentations','*'))))/ trainer.batch_size))+1
-    # trainer.num_val_batches_per_epoch = int(np.rint((10 * len(glob.glob(os.path.join(trainer.dataset_directory,'gt_segmentations','*'))))/ trainer.batch_size))+1
     trainer.num_val_batches_per_epoch = trainer.num_batches_per_epoch 
     print(f'train batches per epoch: {trainer.num_batches_per_epoch} \t val: {trainer.num_val_batches_per_epoch} \t batch_size = {trainer.batch_size}')
     trainer.run_training()
