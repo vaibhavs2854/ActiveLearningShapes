@@ -1,5 +1,5 @@
-.ipynb_checkpoints/
-__pycache__/
+.ipynb_checkpoints
+__pycache__
 AllOracleRuns/
 *.out
 manufa_model/
