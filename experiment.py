@@ -248,7 +248,7 @@ def active_learning_experiment(active_learning_train_cycles, imgs_seen, segmtr_m
         total_images_shown += 10
 
         # Updating classifier 1 epoch at a time for 5 epochs.
-        print(f"=UPDATING CLASSIFIER (total images: {total_images_shown})")
+        print(f"=UPDATING DISCRIMINATOR (total images: {total_images_shown})")
         for i in range(1):
             discriminator = model_update(
                 discriminator, dataloader, oracle_results, criterion, optimizer, num_epochs=1)
