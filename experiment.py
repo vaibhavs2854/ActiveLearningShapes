@@ -38,7 +38,7 @@ def active_learning_experiment(active_learning_train_cycles, imgs_seen, run_id, 
     
     print("===TRAINING DISCRIMINATOR===")
     batch_size = 32
-    dataloader = get_DataLoader(classifier_training_dir, batch_size, 2)
+    dataloader = get_DataLoader(discriminator_training_dir, batch_size, 2)
 
     discriminator = disc_model()
     discriminator.load_model(dataloader)
