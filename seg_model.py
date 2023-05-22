@@ -27,7 +27,7 @@ class seg_model:
     def predict(self, input_folder, output_folder = None, correct_save_dir = None, saved_oracle_filepaths = {}):
         return
     
-    def validate(self, input_folder, output_folder = None, viz_save=False):
+    def validate(self, input_folder, output_folder = None):
         return 
 
     def save_model(self, run_dir): 
@@ -41,7 +41,7 @@ class seg_model:
                 for file in filepaths: 
                     shutil.copy(file, os.path.join(temp_input_folder, os.path.split(file)[1]))
 
-                self.validate(temp_input_folder, output_folder = temp_output_folder, viz_save = True)
+                self.validate(temp_input_folder, output_folder = temp_output_folder)
                 
                 # get list of all output files
                 out_filepaths = []

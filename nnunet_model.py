@@ -335,10 +335,14 @@ class nnunet_model(seg_model.seg_model):
         # TODO: ADD SAVING CORRECT SAVE_DIR? - done? in "save_files_for_nnunet"... they dont get written over... low pri
         predict_simple_AL(input_folder, output_folder, model_folder_name, model = self.network, chk =os.path.splitext(os.path.split(self.save_path)[1])[0] )
     
-    def validate(self, input_folder, output_folder = None, viz_save=False):
+    def validate(self, input_folder, output_folder = None):
         ## TODO: update so it uses self.trainer.... see nnunet.inference.predict.predict_from_folder
         model_folder_name = os.path.join(os.path.split(self.save_path)[0],'..')
-        if (not output_folder) or (not viz_save): 
-            output_folder = tempfile.TemporaryDirectory()
-        predict_simple_AL(input_folder, output_folder, model_folder_name, model = self.network, chk =os.path.splitext(os.path.split(self.save_path)[1])[0] )
-        return batch_iou(os.path.join(os.path.split(input_folder)[0], 'labelsTs'), output_folder, viz_save=False)
+        if output_folder: 
+            predict_simple_AL(input_folder, output_folder, model_folder_name, model = self.network, chk =os.path.splitext(os.path.split(self.save_path)[1])[0] )
+            return batch_iou(os.path.join(os.path.split(input_folder)[0], 'labelsTs'), output_folder, viz_save=False)
+        else: 
+            with tempfile.TemporaryDirectory() as output_folder: 
+                predict_simple_AL(input_folder, output_folder, model_folder_name, model = self.network, chk =os.path.splitext(os.path.split(self.save_path)[1])[0] )
+
+                return batch_iou(os.path.join(os.path.split(input_folder)[0], 'labelsTs'), output_folder, viz_save=False)

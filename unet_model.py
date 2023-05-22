@@ -307,7 +307,7 @@ class unet_model(seg_model.seg_model):
                 np.save(save_path,np.stack([detach_image,unbinarized_unet_seg]))
 
 
-    def validate(self, input_folder, output_folder = None, viz_save=False):
+    def validate(self, input_folder, output_folder = None):
         self.module.eval()
         transforms_arr = [transforms.ToTensor(), transforms.Resize((256, 256))]
         image_transform = transforms.Compose(transforms_arr)
@@ -320,7 +320,7 @@ class unet_model(seg_model.seg_model):
                 if file.endswith(".npy"):
                     segmentation_filepaths.append(os.path.join(root, file))
                     
-        if viz_save: 
+        if output_folder: 
             os.makedirs(os.path.join(output_folder, 'bad'), exist_ok=True)
             os.makedirs(os.path.join(output_folder, 'good'), exist_ok=True)
             os.makedirs(os.path.join(output_folder, 'mid'), exist_ok=True)
@@ -362,7 +362,7 @@ class unet_model(seg_model.seg_model):
                     thresholded_mask = unet_seg_ff
             ious.append(max_iou)
             
-            if viz_save:
+            if output_folder:
                 test_images_save_path = ""
                 file_id = filepath.split("/")[-1]
                 if (max_iou < 0.1):
