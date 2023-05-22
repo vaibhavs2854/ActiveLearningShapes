@@ -166,8 +166,6 @@ def active_learning_experiment(active_learning_train_cycles, imgs_seen, run_id, 
     # File definitions and static setup
     segmentation_dir = "/usr/xtmp/vs196/mammoproj/Data/final_dataset/train/" # files should be .npy, (2, , ) channels: image, binarized segmentation
     classifier_training_dir = segmentation_dir ## images within the dir should be .npy with 
-    oracle_results = dict()
-    oracle_results_thresholds = dict()
     total_images_shown = 0
     saved_oracle_filepaths = []
     
@@ -178,7 +176,11 @@ def active_learning_experiment(active_learning_train_cycles, imgs_seen, run_id, 
     discriminator = disc_model()
     discriminator.load_model(dataloader)
     discriminator.initialize_model(batch_size = batch_size, epochs=10) # initial training
-    patient_scores = discriminator.get_patient_scores()
+    
+    print("===GENERATING INITIAL PATIENT SCORES===")
+    segmentation_dataloader = get_DataLoader(segmentation_dir, batch_size, 2)
+    patient_scores = discriminator.get_scores(segmentation_dataloader)
+    
     all_patient_scores = []
     all_patient_scores.append(patient_scores)
 
@@ -188,6 +190,8 @@ def active_learning_experiment(active_learning_train_cycles, imgs_seen, run_id, 
     assert imgs_seen % 10 == 0
     active_learning_train_cycles = imgs_seen // 10
     # Begin loop over number of active learning/
+    oracle_results = dict()
+    oracle_results_thresholds = dict()
     for _ in tqdm(range(active_learning_train_cycles)):
         # Querying oracle - currently queries {query_cycles} times.
         try:

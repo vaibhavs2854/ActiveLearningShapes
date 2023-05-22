@@ -115,10 +115,10 @@ class disc_model():
         return 
 
     #evaluate, keep track of dict w/ (patient_id -> output of model) Sort by (|output-0.5|), take min and these are "unsure" classifications
-    def get_patient_scores(self):
+    def get_scores(self, dataloader):
         patient_scores = {}
         self.model.eval()
-        for image,mask,patient_id in tqdm(self.dataloader):
+        for image,mask,patient_id in tqdm(dataloader):
             feed_in_data = torch.empty((image.shape[0],3,256,256))
             for i in range(image.shape[0]):
                 feed_in_data[i] = torch.stack([image[i],image[i],mask[i]]).squeeze()
