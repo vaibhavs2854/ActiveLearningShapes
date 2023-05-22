@@ -194,10 +194,10 @@ def get_binary_mask(mask):
     return torch.where(mask > 0.2, 1, 0)
 
 class unet_model(seg_model.seg_model): 
-    def __init__(self, model_path):
+    def __init__(self):
         super().__init__()
         self.dataloader = None
-        self.model_source = model_path
+        self.model_source = "/usr/xtmp/vs196/mammoproj/Code/SavedModels/ControlALUNet/0726/unetmodel_size150.pth"
         self.module = None
     
     def load_model(self, train_dir ): 
