@@ -24,14 +24,18 @@ from nnunet.dataset_conversion.utils import generate_dataset_json
 # Backend py file imports
 from floodfill import convert_directory_to_floodfill
 from dataloader import get_DataLoader
-from model import model_update, get_patient_scores, initialize_and_train_model_experiment
-from oracle import largest_contiguous_region, save_oracle_results
-from unet import unet_dataloader, get_ints, unet_update_model
-from unet import threshold_and_save_images, remove_bad_oracle_results, evaluate_model_on_new_segmentations_and_save
-from unet import exposure, convert_to_3channel
-from nnunet_model import predict_simplest_AL, batch_iou, convert_2d_image_to_nifti, nnunet_update_model, plan_and_preprocess
-from manual_oracle import get_binary_mask_threshold_torch, query_oracle_automatic
+from disc_model import disc_model
+from oracle import  save_oracle_results
+import unet_model
+from nnunet_model import convert_2d_image_to_nifti, plan_and_preprocess
+from manual_oracle import query_oracle_automatic
+import seg_model
+import unet_model
+import nnunet_model
 
+
+def get_binary_mask_threshold(mask,threshold):
+    return np.where(mask > threshold, 1, 0)
 
 # Standard deviation of 50
 def gaus2d(x=0, y=0, mx=0, my=0, sx=50, sy=50):
@@ -48,85 +52,13 @@ def generate_gaussian_weights(size=256):
     return z
 
 
-def intersection_over_union_exp(output_mask, ground_mask):
-    ground_mask = get_ints(ground_mask).squeeze(1)
-    summed = ground_mask + output_mask
-    twos = summed - 2
-    num = 256*256 - torch.count_nonzero(twos)
-    denom = torch.count_nonzero(summed)
-    outputs = torch.div(num, denom)
-    return torch.mean(outputs)
-
-
-def evaluate_metric_on_validation(model, validation_dir, viz_save=False):
-    model.eval()
-    transforms_arr = [transforms.ToTensor(), transforms.Resize((256, 256))]
-    image_transform = transforms.Compose(transforms_arr)
-    ious = []
-    segmentation_filepaths = []
-    gaussian_weight = generate_gaussian_weights()
-
-    for root, dirs, files in os.walk(validation_dir):
-        for file in files:
-            if file.endswith(".npy"):
-                segmentation_filepaths.append(os.path.join(root, file))
-
-    for filepath in tqdm(segmentation_filepaths):
-        arr_and_bin_output = np.load(filepath)
-
-        arr = arr_and_bin_output[0, :, :].copy()
-        bin_output = arr_and_bin_output[1, :, :].copy()
-
-        mask = image_transform(bin_output)[0, :, :]
-        # Makes sure mask is binarized for iou calculation. Check if 0.5 is correct with Alina.
-        mask = torch.where(mask > 0.5, 1, 0)
-        arr = exposure.equalize_hist(arr)  # add hist equalization to
-        image = image_transform(arr)
-        image = torch.from_numpy(np.multiply(
-            gaussian_weight, image.numpy()))  # Apply Gaussian filter
-
-        image = image.float()
-        image = convert_to_3channel(image).cuda()
-        image = transforms.Normalize(
-            mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225))(image)
-
-        unet_seg = model(image)
-        unbinarized_unet_seg = F.softmax(unet_seg[0], dim=0)[1, :, :]
-        max_iou = -1
-        thresholded_mask = None
-        thresholds = [0.0001, 0.0005, 0.001, 0.005, 0.01, 0.05, 0.1,
-                      0.15, 0.2, 0.25, 0.3, 0.35, 0.4]  # try to find the best iou
-        for threshold in thresholds:
-            unet_seg = get_binary_mask_threshold_torch(
-                unbinarized_unet_seg, threshold).detach().cpu().numpy()
-            unet_seg_ff = largest_contiguous_region(
-                unet_seg)  # flood fill binary segmentation
-            unet_seg_ff_torch = torch.from_numpy(unet_seg_ff)
-            # unet_seg = get_binary_mask(unbinarized_unet_seg).cpu()
-            iou = intersection_over_union_exp(unet_seg_ff_torch, mask)
-            if (iou > max_iou):
-                max_iou = iou
-                thresholded_mask = unet_seg_ff
-        ious.append(max_iou)
-        test_images_save_path = ""
-        id = filepath.split("/")[-1]
-        if (max_iou < 0.1):
-            # save bad iou
-            # save unet_seg_threshold
-            test_images_save_path = f"/usr/xtmp/jly16/mammoproj/nnunet_integration_tmp/iou_test_images_1/bad/{id}"
-        if (max_iou > 0.9):
-            # save good iou
-            test_images_save_path = f"/usr/xtmp/jly16/mammoproj/nnunet_integration_tmp/iou_test_images_1/good/{id}"
-        if viz_save:
-            np.save(test_images_save_path, np.stack(
-                [mask.numpy(), thresholded_mask]))
-    # Grab histogram of ious
-    # Floodfill after thresholding and before iou calculation
-    ious_np = np.asarray(ious)
-    # np.save(
-    #     "/usr/xtmp/vs196/mammoproj/Code/ActiveLearning/iouhist_randomrun2.npy", ious_np)
-    return np.average(np.asarray(ious))
-
+#Removes all 0's from oracle_results (images that oracle said are incorrect)
+def remove_bad_oracle_results(oracle_results):
+    output = {}
+    for patient in oracle_results.keys():
+        if oracle_results[patient]==1:
+            output[patient] = oracle_results[patient]
+    return output
 
 
 # Saves any correct segmentations found by the oracle, and additionally pickle dumps any structures
@@ -145,6 +77,27 @@ def save_active_learning_results(save_dir, oracle_results, oracle_results_thresh
 
     return saved_oracle_filepaths
 
+
+#Applies the threshold to each mask saved from the oracle. Resaves [arr,thresholded_mask] stack into save_dir using same conventions (.../Shape/name.npy)
+def threshold_and_save_images(saved_oracle_filepaths, oracle_results_thresholds, save_dir):
+    for filepath in tqdm(saved_oracle_filepaths):
+        if ("/".join(filepath.split("/")[-2:]))[:-4] not in oracle_results_thresholds:
+            threshold = 0.2
+        else:
+            threshold = oracle_results_thresholds[("/".join(filepath.split("/")[-2:]))[:-4]]
+        arr_and_mask = np.load(filepath)
+        copy_arr_mask = arr_and_mask.copy()
+
+        arr = copy_arr_mask[0,:,:].copy()
+        mask = copy_arr_mask[1,:,:].copy()
+        #apply threshold to mask
+        mask = get_binary_mask_threshold(mask, threshold)
+        to_save = np.stack([arr, mask])
+        
+        save_save_dir = os.path.join(save_dir, "/".join(filepath.split("/")[-2:]))
+        if not os.path.exists(os.path.join(save_dir, filepath.split("/")[-2])):
+            os.makedirs(os.path.join(save_dir, filepath.split("/")[-2]))
+        np.save(save_save_dir, to_save)
 
 def update_dir_with_oracle_info(save_dir, oracle_results_thresholds, im_dir):
     save_dir = os.path.join(save_dir, "OracleThresholdedImages")
@@ -206,23 +159,26 @@ def save_files_for_nnunet(task_id, run_id, filepaths):
     # subprocess.run(["nnUNet_plan_and_preprocess", "-t", f"{task_id}", "--verify_dataset_integrity"])
     plan_and_preprocess([task_id, ], verify_integrity = True)
 
-def active_learning_experiment(active_learning_train_cycles, imgs_seen, segmtr_model, run_id, output_dir, iter_num, oracle_query_method, unet = False):
+def active_learning_experiment(active_learning_train_cycles, imgs_seen, run_id, output_dir, iter_num, oracle_query_method, unet = False):
     # ACTIVE LEARNING STAGE
 
     # INITIALIZE CLASSIFIER
     # File definitions and static setup
     segmentation_dir = "/usr/xtmp/vs196/mammoproj/Data/final_dataset/train/" # files should be .npy, (2, , ) channels: image, binarized segmentation
-    classifier_training_dir = segmentation_dir
+    classifier_training_dir = segmentation_dir ## images within the dir should be .npy with 
     oracle_results = dict()
     oracle_results_thresholds = dict()
     total_images_shown = 0
     saved_oracle_filepaths = []
     
     print("===TRAINING DISCRIMINATOR===")
-    dataloader = get_DataLoader(classifier_training_dir, 32, 2)
-    discriminator, loss_tracker, criterion, optimizer = initialize_and_train_model_experiment(
-        dataloader, epochs=10)
-    patient_scores = get_patient_scores(discriminator, dataloader)
+    batch_size = 32
+    dataloader = get_DataLoader(classifier_training_dir, batch_size, 2)
+
+    discriminator = disc_model()
+    discriminator.load_model(dataloader)
+    discriminator.initialize_model(batch_size = batch_size, epochs=10) # initial training
+    patient_scores = discriminator.get_patient_scores()
     all_patient_scores = []
     all_patient_scores.append(patient_scores)
 
@@ -250,10 +206,9 @@ def active_learning_experiment(active_learning_train_cycles, imgs_seen, segmtr_m
         # Updating classifier 1 epoch at a time for 5 epochs.
         print(f"=UPDATING DISCRIMINATOR (total images: {total_images_shown})")
         for i in range(1):
-            discriminator = model_update(
-                discriminator, dataloader, oracle_results, criterion, optimizer, num_epochs=1)
+            discriminator.update_model(oracle_results,batch_size = batch_size, num_epochs=1)
 
-            patient_scores = get_patient_scores(discriminator, dataloader)
+            patient_scores = discriminator.get_patient_scores()
             all_patient_scores.append(patient_scores)
 
     # IN-BETWEEN STAGE
@@ -289,27 +244,20 @@ def active_learning_experiment(active_learning_train_cycles, imgs_seen, segmtr_m
     # Train model using learned oracle data for 5 epochs
     # learned oracle data = images that are in the "new saved oracle filepaths" (the images that the oracle said looked good)   
     if unet:
-        segmtr_dataloader = unet_dataloader(
-            new_saved_oracle_filepaths, batch_size=8, num_workers=2)
-        segmtr_model, _, _ = unet_update_model(
-            segmtr_model, segmtr_dataloader, num_epochs=5)
+        segmenter = unet_model.unet_model( "/usr/xtmp/vs196/mammoproj/Code/SavedModels/ControlALUNet/0726/unetmodel_size150.pth")
+        segmenter_train_dir  = new_saved_oracle_filepaths
     else:
-        trainer = nnunet_update_model(
-            os.path.join(os.environ['nnUNet_preprocessed'], f'Task{new_task}_{run_id}'))
+        segmenter = nnunet_model.nnunet_model()
+        segmenter_train_dir = os.path.join(os.environ['nnUNet_preprocessed'], f'Task{new_task}_{run_id}')
+    segmenter.load_model(segmenter_train_dir)
+    segmenter.update_model()
     
     # potentially save model this iteration if we want. # to be used later 
     if unet:
         model_save_path = os.path.join(run_dir, "unetmodel.pth")
-        torch.save(segmtr_model, model_save_path)
     else:
-        model_save_dir = os.path.join(run_dir, 'all')
-        os.makedirs(model_save_dir, exist_ok=True)
-        model_save_path = os.path.join(model_save_dir, "Iter" + str(iter_num)+".model")
-        trainer.save_checkpoint(model_save_path)
-
-        plans_pkl = '/usr/xtmp/jly16/mammoproj/data/nnUNet_trained_models/nnUNet/2d/Task501_cbis-ddsm/nnUNetTrainerV2__nnUNetPlansv2.1/plans.pkl'
-        if not os.path.isfile(os.path.join(run_dir,'plans.pkl')): 
-            shutil.copy2(plans_pkl, run_dir)
+        model_save_path = os.path.join(run_dir, 'all', "Iter" + str(iter_num)+".model")
+    segmenter.save_model(model_save_path)
 
     # evaluation 1: generate new segmentations of training images and save them. (This is for the next stage of active learning)
     # Evaluate ON IMAGES IN SEGMENTATION_FOLDER AND GENERATE SEGMENTATIONS OF THEM
@@ -322,30 +270,22 @@ def active_learning_experiment(active_learning_train_cycles, imgs_seen, segmtr_m
     
     if unet: 
         segmentation_folder = segmentation_dir
-        evaluate_model_on_new_segmentations_and_save(
-            segmtr_model, segmentation_folder, saved_oracle_filepaths, correct_save_dir, save_dir, iter_num)
     else:
         segmentation_folder = '/usr/xtmp/jly16/mammoproj/data/nnUNet_raw_data_base/nnUNet_raw_data/Task504_duke-mammo/imagesTr'
-        # TODO: ADD SAVING CORRECT SAVE_DIR? - done? in "save_files_for_nnunet"... they dont get written over... low pri
-        predict_simplest_AL(segmentation_folder, save_dir)   
+    segmenter.predict(segmentation_folder, save_dir, correct_save_dir = correct_save_dir, saved_oracle_filepaths = saved_oracle_filepaths)   
     # Push save_dir as the oracle image dir for the next iteration. That's where we populate with unbinarized segmentations from recently trained UNet
 
         
     # evaluation 2: generate segmentations of validation and see how accurate our new segmenter is
     print("=== CREATING SEGMENTATIONS FOR TEST SET ===")
-    viz = False
     if unet:
-        manual_fa_valid_dir = f"/usr/xtmp/vs196/mammoproj/Data/manualfa/manual_validation/"
-        validation_metric = evaluate_metric_on_validation(
-            segmtr_model, manual_fa_valid_dir, viz_save=viz)
+        valid_input_dir =  f"/usr/xtmp/vs196/mammoproj/Data/manualfa/manual_validation/"
+        valid_output_dir = None
     else:
-        valid_dir = os.path.join(
+        valid_input_dir = os.path.join(
             os.environ['nnUNet_raw_data_base'], 'nnUNet_raw_data', f"Task504_duke-mammo")
-        val_pred_dir = os.path.join(run_dir, "ValSegmentations")
-        # TODO: separate good iou from bad iou...
-        # TODO: thresholding? 
-        predict_simplest_AL(os.path.join(valid_dir, 'imagesTs'), val_pred_dir)
-        validation_metric = batch_iou(os.path.join(valid_dir, 'labelsTs'), val_pred_dir, viz_save=viz)
+        valid_output_dir = os.path.join(run_dir, "ValSegmentations")
+    validation_metric = segmenter.validate(os.path.join(valid_input_dir, 'imagesTs'), valid_output_dir)
     print(f"Metric of new segmenter after active learning is: {validation_metric}.")
    
     return validation_metric, model_save_path
@@ -367,7 +307,8 @@ def run_active_learning_experiment(run_id, output_dir, random_seed, unet = False
     experiment_output = pd.DataFrame(
         columns=['random_seed', 'query_type', 'imgs_seen', 'IOU', 'saved_model_location'])
 
-    imgs_seen_list = [20, 30, 40, 50, 60, 70, 80, 90, 100, 120, 150, 170, 200]
+    imgs_seen_list = [20]
+    # imgs_seen_list = [20, 30, 40, 50, 60, 70, 80, 90, 100, 120, 150, 170, 200]
     oracle_query_methods = ["uniform",]
 #     oracle_query_methods = ["uniform", "random",
 #                             "percentile=0.8", "best", "worst"]
@@ -375,15 +316,8 @@ def run_active_learning_experiment(run_id, output_dir, random_seed, unet = False
         for imgs_seen in imgs_seen_list:
             run_unique_id = f"{run_id}_{oracle_query_method}_{imgs_seen}_{random_seed}"
             print(run_unique_id)
-            if unet:
-                model_save_path = "/usr/xtmp/vs196/mammoproj/Code/SavedModels/ControlALUNet/0726/unetmodel_size150.pth"
-                # model_save_path = grab a fresh unet.
-                segmtr_model = torch.load(model_save_path)
-            else:
-                segmtr_model = None
             validation_metric, saved_model_location = active_learning_experiment(10,
                                                                     imgs_seen,
-                                                                    segmtr_model,
                                                                     run_unique_id,
                                                                     output_dir,
                                                                     iter_num=0,

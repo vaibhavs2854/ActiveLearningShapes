@@ -2,11 +2,32 @@ import os
 
 import numpy as np
 import cv2
+from scipy import signal
 from tqdm import tqdm
 
-from unet import find_border,expand_border
-
 """Largest Contiguous Region Helper Methods"""
+#Image is original, non-convoluted mask. Returns a bordered mask
+def find_border(mask):
+    assert len(mask.shape)==2, "Mask is not 2d"
+    our_kernel = np.array([[1,1,1],[1,1,1],[1,1,1]])
+    #conv_result = convolution2d(mask,our_kernel)
+    conv_result = signal.convolve2d(mask,our_kernel,mode='same',fillvalue=0)
+    borders = np.zeros_like(conv_result)
+    for i in range(conv_result.shape[0]):
+        for j in range(conv_result.shape[1]):
+            borders[i][j] = 1 if (conv_result[i][j]==9 or conv_result[i][j]==0) else 0
+    return borders
+ 
+#Takes in bordered mask, and returns expanded mask
+def expand_border(border):
+    expanded_borders = np.zeros_like(border)
+    border_kernel = np.array([[1,1,1],[1,1,1],[1,1,1]])
+    conv_border = signal.convolve2d(border, border_kernel, mode='same', fillvalue=1)
+    for i in range(conv_border.shape[0]):
+        for j in range(conv_border.shape[1]):
+            expanded_borders[i][j] = 1 if conv_border[i][j]==9 else 0
+    return expanded_borders
+
 def bfs_flood_fill(mask,i,j,val):
     queue = []
     queue.append((i,j))

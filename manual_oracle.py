@@ -5,7 +5,6 @@ import random
 from torchvision import transforms
 
 from dataloader import get_DataLoader
-from model import get_patient_scores
 
 def get_ints_torch(mask):
     return torch.where(mask>0.2,1,0)
@@ -159,14 +158,14 @@ def query_oracle_automatic(oracle_results,oracle_results_thresholds,patient_scor
     return oracle_results, oracle_results_thresholds
 
 
-if __name__=="__main__":
-    model = None #Replace model with trained classifier for running experiments on active learning.
-    classifier_training_dir = "/usr/xtmp/vs196/mammoproj/Data/manualfa/train/" #Manually labelled train data. Not sure if we use this or validation dir.
-    dataloader = get_DataLoader(classifier_training_dir,32,2) 
-    oracle_results = dict()
-    oracle_results_thresholds = dict()
-    patient_scores = get_patient_scores(model,dataloader)
-    ground_truth_dir = "/usr/xtmp/vs196/mammoproj/Data/manualfa/manual_validation/" #manual segmentations
-    segmentation_dir = "/usr/xtmp/vs196/mammoproj/Data/manualfa/validation_histeq_ff/" #Not control. This segs from unet trained after one round of active learning (with flood fill).
-    #We may have to make a separate method to generate new segmentations based on different unet models.
-    oracle_results, oracle_results_thresholds = query_oracle_automatic(oracle_results,oracle_results_thresholds,patient_scores,ground_truth_dir,segmentation_dir,query_method="uniform",query_number=10)
+# if __name__=="__main__":
+#     model = None #Replace model with trained classifier for running experiments on active learning.
+#     classifier_training_dir = "/usr/xtmp/vs196/mammoproj/Data/manualfa/train/" #Manually labelled train data. Not sure if we use this or validation dir.
+#     dataloader = get_DataLoader(classifier_training_dir,32,2) 
+#     oracle_results = dict()
+#     oracle_results_thresholds = dict()
+#     patient_scores = get_patient_scores(model,dataloader)
+#     ground_truth_dir = "/usr/xtmp/vs196/mammoproj/Data/manualfa/manual_validation/" #manual segmentations
+#     segmentation_dir = "/usr/xtmp/vs196/mammoproj/Data/manualfa/validation_histeq_ff/" #Not control. This segs from unet trained after one round of active learning (with flood fill).
+#     #We may have to make a separate method to generate new segmentations based on different unet models.
+#     oracle_results, oracle_results_thresholds = query_oracle_automatic(oracle_results,oracle_results_thresholds,patient_scores,ground_truth_dir,segmentation_dir,query_method="uniform",query_number=10)

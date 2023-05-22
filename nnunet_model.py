@@ -20,6 +20,8 @@ from nnunet.utilities.task_name_id_conversion import convert_id_to_task_name
 from nnunet.preprocessing.sanity_checks import verify_dataset_integrity
 from nnunet.training.model_restore import recursive_find_python_class
 
+import seg_model
+
 
 def convert_2d_image_to_nifti(img: np.array, output_filename_truncated: str, spacing=(999, 1, 1),
                               transform=None, is_seg: bool = False) -> None:
@@ -160,45 +162,6 @@ def plan_and_preprocess(task_ids:list,
                     exp_planner.run_preprocessing(threads)
 
 
-def nnunet_update_model(new_dataset_dir, network = '2d',
-    task = 'Task501_cbis-ddsm',
-    network_trainer = 'nnUNetTrainerV2',
-    plans_identifier = default_plans_identifier,
-    fp32 = False, validation_only = False, deterministic = False, 
-    use_compressed_data = False, num_epochs=5):    
-    
-    run_mixed_precision = not fp32
-    decompress_data = not use_compressed_data
-
-    if not task.startswith("Task"):
-        task_id = int(task)
-        task = convert_id_to_task_name(task_id)
-
-
-    plans_file, output_folder_name, dataset_directory, batch_dice, stage, \
-        trainer_class = get_default_configuration(network, task, network_trainer, plans_identifier)
-    if trainer_class is None:
-        raise RuntimeError("Could not find trainer class in nnunet.training.network_training")
-
-    trainer = trainer_class(plans_file, 'all', output_folder=output_folder_name, dataset_directory=dataset_directory,
-                            batch_dice=batch_dice, stage=stage, unpack_data=decompress_data,
-                            deterministic=deterministic,
-                            fp16=run_mixed_precision)
-    trainer.dataset_directory = new_dataset_dir
-
-    trainer.initialize(not validation_only)
-
-    trainer.load_best_checkpoint()
-    trainer.epoch = trainer.max_num_epochs - num_epochs
-    trainer.log_file = None
-    trainer.use_progress_bar = True
-    trainer.num_batches_per_epoch = int(np.rint((len(glob.glob(os.path.join( trainer.dataset_directory,'gt_segmentations','*'))))/ trainer.batch_size))+1
-    trainer.num_val_batches_per_epoch = trainer.num_batches_per_epoch 
-    print(f'train batches per epoch: {trainer.num_batches_per_epoch} \t val: {trainer.num_val_batches_per_epoch} \t batch_size = {trainer.batch_size}')
-    trainer.run_training()
-
-    return trainer
-
 ## Adapted from nnunet.inference.predict_simple
 def predict_simple_AL(input_folder, output_folder, model_folder_name, 
     model = "3d_fullres",
@@ -245,17 +208,17 @@ def predict_simple_AL(input_folder, output_folder, model_folder_name,
     save_json(end - st, join(output_folder, 'prediction_time.txt'))
     return
 
-## front facing  above's Predict_simple_AL that uses the cbis-ddsm 3d_fullres model
-def predict_simplest_AL(input_folder, output_folder):
-    task_name = 'Task501_cbis-ddsm'
-    model = '2d'
+# ## front facing  above's Predict_simple_AL that uses the cbis-ddsm 3d_fullres model
+# def predict_simplest_AL(input_folder, output_folder):
+#     task_name = 'Task501_cbis-ddsm'
+#     model = '2d'
 
-    model_folder_name = os.path.join('/usr/xtmp/jly16/mammoproj/data/nnUNet_trained_models/nnUNet/',\
-        model,task_name,'nnUNetTrainerV2__nnUNetPlansv2.1')
+#     model_folder_name = os.path.join('/usr/xtmp/jly16/mammoproj/data/nnUNet_trained_models/nnUNet/',\
+#         model,task_name,'nnUNetTrainerV2__nnUNetPlansv2.1')
 
-    predict_simple_AL(input_folder, output_folder, model_folder_name, model = model)
+#     predict_simple_AL(input_folder, output_folder, model_folder_name, model = model)
 
-    return 
+#     return 
 
 def batch_iou(label_dir, pred_dir, viz_save = True):
     label_filepaths = sorted(glob.glob(f"{label_dir}/*.nii.gz"))
@@ -299,3 +262,82 @@ def batch_iou(label_dir, pred_dir, viz_save = True):
             #     [label.numpy(), pred]))
     
     return np.average(np.asarray(ious))
+
+
+class nnunet_model(seg_model.seg_model): 
+    def __init__(self, 
+                 base_model_task_id = 'Task501_cbis-ddsm', 
+                 network = '2d',
+                 network_trainer = 'nnUNetTrainerV2',
+                 plans_identifier = default_plans_identifier):
+        super().__init__()
+        if not base_model_task_id.startswith("Task"):
+            task_id = int(base_model_task_id)
+            base_model_task_id = convert_id_to_task_name(task_id)
+        
+        self.task_id = base_model_task_id
+        self.network = network
+        self.network_trainer = network_trainer
+        self.plans_identifier = plans_identifier
+        self.save_path = None
+    
+    def load_model(self, train_dir, 
+                   fp32 = False, 
+                   validation_only = False, 
+                   deterministic = False, 
+                   use_compressed_data = False, ): 
+        
+        run_mixed_precision = not fp32
+        decompress_data = not use_compressed_data
+
+        plans_file, output_folder_name, dataset_directory, batch_dice, stage, \
+            trainer_class = get_default_configuration(self.network, self.task_id, self.network_trainer, self.plans_identifier)
+        
+        if trainer_class is None:
+            raise RuntimeError("Could not find trainer class in nnunet.training.network_training")
+
+        self.trainer = trainer_class(plans_file, 'all', output_folder=output_folder_name, dataset_directory=dataset_directory,
+                                batch_dice=batch_dice, stage=stage, unpack_data=decompress_data,
+                                deterministic=deterministic,
+                                fp16=run_mixed_precision)
+        self.trainer.dataset_directory = train_dir
+        self.trainer.initialize(not validation_only)
+        self.trainer.load_best_checkpoint()
+        self.verts['base model'] = self.trainer.epoch
+    
+    def update_model(self,num_epochs = 5, ):
+        self.trainer.max_num_epochs = self.trainer.epoch + num_epochs
+        self.trainer.log_file = None
+        self.trainer.use_progress_bar = True
+        self.trainer.num_batches_per_epoch = int(np.rint(len(glob.glob( os.path.join(self.trainer.dataset_directory,'gt_segmentations','*') ))/ self.trainer.batch_size))+1
+        self.trainer.num_val_batches_per_epoch = self.trainer.num_batches_per_epoch 
+        print(f'train batches per epoch: {self.trainer.num_batches_per_epoch} \t val: {self.trainer.num_val_batches_per_epoch} \t batch_size = {self.trainer.batch_size}')
+        self.trainer.run_training()
+        self.verts[f'Model Updated (epoch = {self.trainer.epoch}'] = self.trainer.epoch
+        
+    def save_model(self, save_path):
+        os.makedirs(os.path.split(save_path)[0], exist_ok=True)
+        self.trainer.save_checkpoint(save_path)
+        self.save_path = save_path
+
+        run_dir = os.path.join(os.path.split(save_path)[0], '..')
+
+        if not os.path.isfile(os.path.join(run_dir,'plans.pkl')): 
+            plans_pkl = os.path.join(os.environ['RESULTS_FOLDER'],'nnUNet', self.network, \
+                                 self.task_id,  self.network_trainer+'__'+self.plans_identifier,'plans.pkl')
+        
+            shutil.copy2(plans_pkl, run_dir)
+    
+    def predict(self, input_folder, output_folder = None, correct_save_dir = None, saved_oracle_filepaths = {}):
+        ## TODO: update so it uses self.trainer.... see nnunet.inference.predict.predict_from_folder
+        model_folder_name = os.path.join(os.path.split(self.save_path)[0],'..')
+        # TODO: ADD SAVING CORRECT SAVE_DIR? - done? in "save_files_for_nnunet"... they dont get written over... low pri
+        predict_simple_AL(input_folder, output_folder, model_folder_name, model = self.network, chk =os.path.splitext(os.path.split(self.save_path)[1])[0] )
+    
+    def validate(self, input_folder, output_folder = None, viz_save=False):
+        ## TODO: update so it uses self.trainer.... see nnunet.inference.predict.predict_from_folder
+        model_folder_name = os.path.join(os.path.split(self.save_path)[0],'..')
+        if (not output_folder) or (not viz_save): 
+            output_folder = tempfile.TemporaryDirectory()
+        predict_simple_AL(input_folder, output_folder, model_folder_name, model = self.network, chk =os.path.splitext(os.path.split(self.save_path)[1])[0] )
+        return batch_iou(os.path.join(os.path.split(input_folder)[0], 'labelsTs'), output_folder, viz_save=False)

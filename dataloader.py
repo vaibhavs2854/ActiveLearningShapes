@@ -18,7 +18,6 @@ class get_data(Dataset):
 
     def __getitem__(self,idx):
         filepath = self.image_filepaths[idx]
-        #print("Filepath: " + filepath)
         arr_and_mask = np.load(filepath)
         copy_arr_mask = arr_and_mask.copy()
         arr = copy_arr_mask[0,:,:].copy()
@@ -27,14 +26,9 @@ class get_data(Dataset):
         #mask = largest_contiguous_region(mask)
         
         image = (self.image_transform(arr))
-        #image = our_transform(image)
-        #print(image.shape)
-        #print("OUTSIDE")
         mask_label = (self.image_transform(mask))
         
         patient_id = '/'.join(filepath.split("/")[-2:])[:-4]
-        #patient_id = filepath.split("/")[-1][:-4]
-        #mask_label = our_transform(mask_label)
         return image,mask_label.long(),patient_id
     
 def get_DataLoader(train_images_directory,batch_size,num_workers):
