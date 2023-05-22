@@ -10,7 +10,7 @@ import torch.nn.functional as F
 
 from skimage import exposure
 from augmentations import random_flip, random_rotate_90
-from manual_oracle import get_binary_mask_threshold_torch
+from auto_oracle import get_binary_mask_threshold_torch
 from floodfill import largest_contiguous_region
 
 import seg_model
@@ -319,6 +319,12 @@ class unet_model(seg_model.seg_model):
             for file in files:
                 if file.endswith(".npy"):
                     segmentation_filepaths.append(os.path.join(root, file))
+                    
+        if viz_save: 
+            os.makedirs(os.path.join(output_folder, 'bad'), exist_ok=True)
+            os.makedirs(os.path.join(output_folder, 'good'), exist_ok=True)
+            os.makedirs(os.path.join(output_folder, 'mid'), exist_ok=True)
+            
         for filepath in tqdm(segmentation_filepaths):
             arr_and_bin_output = np.load(filepath)
             arr = arr_and_bin_output[0, :, :].copy()
@@ -355,20 +361,19 @@ class unet_model(seg_model.seg_model):
                     max_iou = iou
                     thresholded_mask = unet_seg_ff
             ious.append(max_iou)
-            test_images_save_path = ""
-            file_id = filepath.split("/")[-1]
-            if (max_iou < 0.1):
-                # save bad iou
-                test_images_save_path = os.path.join(output_folder, 'bad', file_id)
-            elif (max_iou > 0.9):
-                # save good iou
-                test_images_save_path = os.path.join(output_folder, 'good', file_id)
-            else: 
-                test_images_save_path = os.path.join(output_folder, 'mid', file_id)
+            
             if viz_save:
-                os.makedirs(os.path.join(output_folder, 'bad'), exist_ok=True)
-                os.makedirs(os.path.join(output_folder, 'good'), exist_ok=True)
-                os.makedirs(os.path.join(output_folder, 'mid'), exist_ok=True)
+                test_images_save_path = ""
+                file_id = filepath.split("/")[-1]
+                if (max_iou < 0.1):
+                    # save bad iou
+                    test_images_save_path = os.path.join(output_folder, 'bad', file_id)
+                elif (max_iou > 0.9):
+                    # save good iou
+                    test_images_save_path = os.path.join(output_folder, 'good', file_id)
+                else: 
+                    test_images_save_path = os.path.join(output_folder, 'mid', file_id)
+                
                 np.save(test_images_save_path, np.stack(
                     [mask.numpy(), thresholded_mask]))
         # Grab histogram of ious

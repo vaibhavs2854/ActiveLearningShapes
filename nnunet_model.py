@@ -5,6 +5,7 @@ import glob
 import SimpleITK as sitk
 import shutil
 from time import time
+import tempfile
 
 from nnunet.run.default_configuration import get_default_configuration
 from nnunet.inference.predict import predict_from_folder
