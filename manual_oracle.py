@@ -75,7 +75,7 @@ def query_oracle(oracle_results,oracle_results_thresholds,patient_scores,im_dir,
             if list(patient_scores.keys())[i] not in list(oracle_results.keys()):
                 oracle_queries.append((list(patient_scores.keys())[i],threshold))
     elif query_method=="random":
-        indices = random.sample(len(patient_scores), query_number)
+        indices = random.sample(list(np.arange(len(patient_scores))), query_number)
         for i in indices:
             if list(patient_scores.keys())[i] not in list(oracle_results.keys()):
                 oracle_queries.append((list(patient_scores.keys())[i],threshold))

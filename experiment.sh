@@ -5,4 +5,4 @@ source /usr/xtmp/jly16/mammoproj/dev/bin/activate
 echo "start running"
 nvidia-smi
 
-python experiment.py --nnunet --run_id 5_22_refactor_nnunet --output_dir /usr/xtmp/jly16/mammoproj/nnunet_integration_tmp/AllOracleRuns  --random_seed 44
+python experiment.py --unet --run_id 5_22_refactor_unet --output_dir /usr/xtmp/jly16/mammoproj/nnunet_integration_tmp/AllOracleRuns  --random_seed 44

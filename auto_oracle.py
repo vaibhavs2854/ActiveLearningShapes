@@ -84,7 +84,7 @@ def query_oracle_automatic(oracle_results,oracle_results_thresholds,patient_scor
         for i in range(0,len(patient_scores_minus_oracle_results),step):
             oracle_queries.append(patient_scores_minus_oracle_results[i])
     elif query_method=="random":
-        indices = random.sample(np.arange(len(patient_scores_minus_oracle_results)), query_number)
+        indices = random.sample(list(np.arange(len(patient_scores_minus_oracle_results))), query_number)
         for i in indices:
                 oracle_queries.append(patient_scores_minus_oracle_results[i])
     elif query_method=="best":

@@ -76,7 +76,7 @@ def active_learning_experiment(active_learning_train_cycles, imgs_seen, run_id, 
         for i in range(5):
             discriminator.update_model(oracle_results,batch_size = batch_size, num_epochs=1)
 
-            patient_scores = discriminator.get_patient_scores(segmentation_dataloader)
+            patient_scores = discriminator.get_scores(segmentation_dataloader)
             all_patient_scores.append(patient_scores)
 
     # IN-BETWEEN STAGE
