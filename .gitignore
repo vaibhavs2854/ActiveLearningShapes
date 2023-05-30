@@ -1,5 +1,10 @@
-.ipynb_checkpoints/
+.ipynb_checkpoints
 __pycache__/
+*.pyc
 AllOracleRuns/
 *.out
 manufa_model/
+Untitled.ipynb
+nnunet_integration.ipynb
+slurm_out/
+to delete/

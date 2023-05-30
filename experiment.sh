@@ -1,8 +1,8 @@
 #!/bin/bash
-#SBATCH  --gres=gpu:1 -p compsci-gpu --time=10-00:00:00
+#SBATCH  --gres=gpu:p100:1 -p compsci-gpu --time=10-00:00:00
 
-source /usr/xtmp/vs196/mammoproj/Env/trainenv2/bin/activate
+source /usr/xtmp/jly16/mammoproj/dev/bin/activate
 echo "start running"
 nvidia-smi
 
-python experiment.py --random_seed=44
+python experiment.py --unet --run_id 5_22_refactor_unet --output_dir /usr/xtmp/jly16/mammoproj/nnunet_integration_tmp/AllOracleRuns  --random_seed 44
